@@ -12,7 +12,7 @@ import ScreenTimeCard from './ui/screen-time-card';
 import { AttributionBreakdown, ImprovementSuggestions, BenchmarkDisplay, SemanticAnalysisCard } from './lender/ExplainabilityComponents';
 
 import { useParams } from 'react-router-dom';
-import { fetchLoans, fetchLoanExplainability, uploadLoanDocument, fetchDeepAnalysis } from '../api';
+import { fetchLoans, fetchLoanExplainability, uploadLoanDocument, fetchDeepAnalysis, generateRFIEmail } from '../api';
 
 export default function LoanDetailsPage() {
     const { id } = useParams();
@@ -22,6 +22,9 @@ export default function LoanDetailsPage() {
     const [deepAnalysis, setDeepAnalysis] = useState(null);
     const [deepAnalysisLoading, setDeepAnalysisLoading] = useState(false);
     const [showDeepAnalysis, setShowDeepAnalysis] = useState(false);
+    const [rfiEmail, setRfiEmail] = useState(null);
+    const [rfiEmailLoading, setRfiEmailLoading] = useState(false);
+    const [rfiDismissed, setRfiDismissed] = useState(false);
     const fileInputRef = useRef(null);
 
     const handleFileUpload = async (e) => {
@@ -336,13 +339,13 @@ export default function LoanDetailsPage() {
                                     <>
                                         {/* Overall Status Banner */}
                                         <div className={`p-4 rounded-xl ${deepAnalysis.overall_status === 'STRONG CANDIDATE' ? 'bg-green-500/20 border border-green-500/30' :
-                                                deepAnalysis.overall_status === 'NOT RECOMMENDED' ? 'bg-red-500/20 border border-red-500/30' :
-                                                    'bg-amber-500/20 border border-amber-500/30'
+                                            deepAnalysis.overall_status === 'NOT RECOMMENDED' ? 'bg-red-500/20 border border-red-500/30' :
+                                                'bg-amber-500/20 border border-amber-500/30'
                                             }`}>
                                             <div className="flex items-center justify-between">
                                                 <span className={`text-lg font-bold ${deepAnalysis.overall_status === 'STRONG CANDIDATE' ? 'text-green-400' :
-                                                        deepAnalysis.overall_status === 'NOT RECOMMENDED' ? 'text-red-400' :
-                                                            'text-amber-400'
+                                                    deepAnalysis.overall_status === 'NOT RECOMMENDED' ? 'text-red-400' :
+                                                        'text-amber-400'
                                                     }`}>
                                                     {deepAnalysis.overall_status}
                                                 </span>
@@ -357,7 +360,7 @@ export default function LoanDetailsPage() {
                                                     <h3 className="text-lg font-semibold text-white">{section.section}</h3>
                                                     {section.status && (
                                                         <span className={`text-sm font-medium ${section.status.includes('✅') ? 'text-green-400' :
-                                                                section.status.includes('❌') ? 'text-red-400' : 'text-amber-400'
+                                                            section.status.includes('❌') ? 'text-red-400' : 'text-amber-400'
                                                             }`}>
                                                             {section.status}
                                                         </span>
@@ -387,8 +390,8 @@ export default function LoanDetailsPage() {
                                                                         <td className="py-3 text-center text-gray-300">{m.value}</td>
                                                                         <td className="py-3 text-right">
                                                                             <span className={`${m.status.includes('✅') ? 'text-green-400' :
-                                                                                    m.status.includes('❌') ? 'text-red-400' :
-                                                                                        m.status.includes('🚨') ? 'text-red-400' : 'text-amber-400'
+                                                                                m.status.includes('❌') ? 'text-red-400' :
+                                                                                    m.status.includes('🚨') ? 'text-red-400' : 'text-amber-400'
                                                                                 }`}>
                                                                                 {m.status}
                                                                             </span>
@@ -438,10 +441,10 @@ export default function LoanDetailsPage() {
                                                 {/* Strategy Recommendation */}
                                                 {section.type === 'strategy' && section.recommendation && (
                                                     <div className={`mt-3 p-3 rounded-lg ${section.recommendation === 'APPROVE' ? 'bg-green-500/20' :
-                                                            section.recommendation.includes('REJECT') ? 'bg-red-500/20' : 'bg-amber-500/20'
+                                                        section.recommendation.includes('REJECT') ? 'bg-red-500/20' : 'bg-amber-500/20'
                                                         }`}>
                                                         <span className={`font-bold ${section.recommendation === 'APPROVE' ? 'text-green-400' :
-                                                                section.recommendation.includes('REJECT') ? 'text-red-400' : 'text-amber-400'
+                                                            section.recommendation.includes('REJECT') ? 'text-red-400' : 'text-amber-400'
                                                             }`}>
                                                             Recommendation: {section.recommendation}
                                                         </span>
@@ -463,9 +466,63 @@ export default function LoanDetailsPage() {
                                                                 <p className="text-sm text-gray-400">{action.detail}</p>
                                                             </div>
                                                         ))}
-                                                        {section.followup_prompt && (
-                                                            <div className="mt-4 p-3 rounded-lg bg-purple-500/10 border border-purple-500/20">
-                                                                <p className="text-sm text-purple-300 italic">{section.followup_prompt}</p>
+                                                        {section.followup_prompt && !rfiEmail && !rfiDismissed && (
+                                                            <div className="mt-4 p-4 rounded-xl bg-purple-500/10 border border-purple-500/20">
+                                                                <p className="text-sm text-purple-300 mb-4">{section.followup_prompt}</p>
+                                                                <div className="flex gap-3">
+                                                                    <button
+                                                                        onClick={async () => {
+                                                                            setRfiEmailLoading(true);
+                                                                            try {
+                                                                                const gapsSection = deepAnalysis?.analysis?.find(s => s.type === 'gaps');
+                                                                                const result = await generateRFIEmail(id, gapsSection?.gaps || []);
+                                                                                if (result.status === 'success') {
+                                                                                    setRfiEmail(result.email);
+                                                                                }
+                                                                            } catch (err) {
+                                                                                console.error('Failed to generate email:', err);
+                                                                            } finally {
+                                                                                setRfiEmailLoading(false);
+                                                                            }
+                                                                        }}
+                                                                        disabled={rfiEmailLoading}
+                                                                        className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-medium flex items-center gap-2 transition-all disabled:opacity-50"
+                                                                    >
+                                                                        {rfiEmailLoading ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
+                                                                        Yes, Draft Email
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => setRfiDismissed(true)}
+                                                                        className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400 font-medium flex items-center gap-2 transition-all"
+                                                                    >
+                                                                        <X size={16} />
+                                                                        No Thanks
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                        {rfiEmail && (
+                                                            <div className="mt-4 space-y-3">
+                                                                <div className="flex items-center justify-between">
+                                                                    <h4 className="text-white font-semibold flex items-center gap-2">
+                                                                        <CheckCircle size={16} className="text-green-400" />
+                                                                        Generated Email Draft
+                                                                    </h4>
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            navigator.clipboard.writeText(rfiEmail.body);
+                                                                            alert('Email copied to clipboard!');
+                                                                        }}
+                                                                        className="text-xs px-3 py-1 rounded-lg bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 transition-all"
+                                                                    >
+                                                                        Copy to Clipboard
+                                                                    </button>
+                                                                </div>
+                                                                <div className="p-4 rounded-xl bg-[#0a0f1a] border border-white/10">
+                                                                    <div className="text-xs text-gray-500 mb-2">To: <span className="text-gray-400">{rfiEmail.to}</span></div>
+                                                                    <div className="text-xs text-gray-500 mb-3">Subject: <span className="text-white font-medium">{rfiEmail.subject}</span></div>
+                                                                    <pre className="text-sm text-gray-300 whitespace-pre-wrap font-sans leading-relaxed">{rfiEmail.body}</pre>
+                                                                </div>
                                                             </div>
                                                         )}
                                                     </div>

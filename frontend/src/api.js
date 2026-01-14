@@ -242,3 +242,18 @@ export const deleteTeamMember = async (id) => {
         return { message: "error" };
     }
 };
+
+export const generateRFIEmail = async (loanId, gaps) => {
+    try {
+        const res = await fetch(`${API_BASE}/loans/${loanId}/generate-rfi-email`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ gaps })
+        });
+        if (!res.ok) throw new Error('Network response was not ok');
+        return await res.json();
+    } catch (error) {
+        console.error("Failed to generate RFI email:", error);
+        throw error;
+    }
+};

@@ -385,6 +385,144 @@ app.post('/api/loans/:id/deep-analysis', async (req, res) => {
     }
 });
 
+// Generate RFI (Request for Information) Email
+app.post('/api/loans/:id/generate-rfi-email', async (req, res) => {
+    try {
+        const loanId = req.params.id;
+        const { gaps } = req.body;
+
+        // Get loan details
+        const loan = await new Promise((resolve, reject) => {
+            db.get('SELECT * FROM loans WHERE id = ?', [loanId], (err, row) => {
+                if (err) reject(err);
+                else resolve(row);
+            });
+        });
+
+        if (!loan) {
+            return res.status(404).json({ error: 'Loan not found' });
+        }
+
+        // Build intelligent email based on gaps
+        const applicantName = loan.applicant_name || 'Applicant';
+        const amount = Number(loan.amount).toLocaleString();
+        const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+        // Parse gaps into actionable items
+        const actionItems = [];
+        let itemNumber = 1;
+
+        if (gaps?.some(g => g.title?.includes('Use of Proceeds') || g.title?.includes('Proceeds'))) {
+            actionItems.push({
+                number: itemNumber++,
+                title: 'Detailed Use of Proceeds Breakdown',
+                description: `Please provide a line-by-line breakdown of how the $${amount} will be allocated, specifically identifying:`,
+                bullets: [
+                    'Amount allocated to green assets (equipment, infrastructure)',
+                    'Amount allocated to project development costs',
+                    'Amount allocated to operational expenses (if any)',
+                    'Confirmation that proceeds will be held in a segregated account'
+                ]
+            });
+        }
+
+        if (gaps?.some(g => g.title?.includes('Project Evaluation') || g.title?.includes('Evaluation'))) {
+            actionItems.push({
+                number: itemNumber++,
+                title: 'Environmental Impact Quantification',
+                description: 'To satisfy Project Evaluation requirements, please provide measurable environmental KPIs:',
+                bullets: [
+                    'Installed capacity (MW) and expected annual generation (MWh)',
+                    'Estimated annual CO2 emissions avoided (tonnes)',
+                    'Methodology used for environmental impact calculations',
+                    'Third-party verification or certifications (if available)'
+                ]
+            });
+        }
+
+        if (gaps?.some(g => g.title?.includes('Reporting') || g.title?.includes('reporti'))) {
+            actionItems.push({
+                number: itemNumber++,
+                title: 'Post-Disbursement Reporting Commitment',
+                description: 'Confirmation of impact reporting commitment:',
+                bullets: [
+                    'Agreement to provide annual impact reports',
+                    'Specific metrics to be reported (MWh, CO2, etc.)',
+                    'Reporting format and timeline',
+                    'Internal verification process'
+                ]
+            });
+        }
+
+        if (gaps?.some(g => g.title?.includes('EU Taxonomy') || g.title?.includes('Technical Screening'))) {
+            actionItems.push({
+                number: itemNumber++,
+                title: 'EU Taxonomy Technical Documentation',
+                description: 'For EU Taxonomy alignment, please provide:',
+                bullets: [
+                    'NACE code classification for the project activity',
+                    'Technical specifications demonstrating compliance with screening criteria',
+                    'DNSH (Do No Significant Harm) assessment for all environmental objectives',
+                    'Minimum safeguards compliance documentation'
+                ]
+            });
+        }
+
+        // Build email content
+        const emailSubject = `Request for Additional Information - Green Loan Application #${loanId}`;
+
+        let emailBody = `Dear ${applicantName} Team,
+
+Thank you for submitting your Green Loan application for $${amount}. We have completed our initial AI-powered assessment using our VerdeScore platform, which evaluates applications against the LMA Green Loan Principles and EU Taxonomy Regulation.
+
+While your project demonstrates genuine environmental value, we require additional documentation to complete our Green Loan classification. This is a standard requirement to ensure compliance with international green financing standards.
+
+REQUIRED DOCUMENTATION
+`;
+
+        actionItems.forEach(item => {
+            emailBody += `
+${item.number}. ${item.title}
+${item.description}
+${item.bullets.map(b => `   • ${b}`).join('\n')}
+`;
+        });
+
+        emailBody += `
+NEXT STEPS
+Please submit the requested documentation within 10 business days. Upon receipt, we will:
+1. Re-run our AI assessment with the updated information
+2. Provide a revised Green Loan eligibility score
+3. Issue a formal approval decision within 48 hours
+
+If you have any questions about these requirements, please don't hesitate to contact our Green Finance team.
+
+We look forward to supporting your environmental initiative.
+
+Best regards,
+Green Finance Team
+VerdeScore Platform
+
+---
+This email was generated by VerdeScore AI on ${today}
+Loan Reference: #${loanId}`;
+
+        res.json({
+            status: 'success',
+            email: {
+                subject: emailSubject,
+                body: emailBody,
+                to: `${applicantName.toLowerCase().replace(/\s+/g, '.')}@company.com`,
+                generated_at: new Date().toISOString()
+            }
+        });
+
+    } catch (error) {
+        console.error('Generate RFI email error:', error);
+        res.status(500).json({ error: 'Failed to generate email', details: error.message });
+    }
+});
+
 // Get Aggregated Dashboard Stats
 app.get('/api/dashboard/stats', (req, res) => {
     const sql = `
