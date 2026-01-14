@@ -149,7 +149,6 @@ function generateAttribution(evaluationResult) {
 function generateNaturalLanguageExplanation(evaluationResult, attribution) {
     const parts = [];
     const score = evaluationResult.green_score || attribution.attributed_score;
-    const riskScore = evaluationResult.risk_score || 0;
     const lmaResult = evaluationResult.lma_compliance || {};
     const euResult = evaluationResult.eu_taxonomy || {};
     const semantic = evaluationResult.semantic || {};
@@ -164,25 +163,25 @@ function generateNaturalLanguageExplanation(evaluationResult, attribution) {
     const category = semantic.primary_category?.category?.replace(/_/g, ' ') || 'unclassified project';
 
     if (score >= 80 && lmaCompliant && euAligned) {
-        parts.push(`<strong>STRONG CANDIDATE</strong> for green financing. This ${category} demonstrates comprehensive alignment with both LMA Green Loan Principles and EU Taxonomy criteria.`);
+        parts.push(`STRONG CANDIDATE for green financing. This ${category} demonstrates comprehensive alignment with both LMA Green Loan Principles and EU Taxonomy criteria.`);
     } else if (score >= 70 && lmaCompliant) {
-        parts.push(`<strong>APPROVABLE</strong> with conditions. This ${category} meets LMA GLP requirements but has ${euAligned ? 'solid' : 'gaps in'} EU Taxonomy alignment. ${euAligned ? '' : 'Consider if EU disclosure compliance is required for your portfolio.'}`);
+        parts.push(`APPROVABLE with conditions. This ${category} meets LMA GLP requirements but has ${euAligned ? 'solid' : 'gaps in'} EU Taxonomy alignment.${euAligned ? '' : ' Consider if EU disclosure compliance is required for your portfolio.'}`);
     } else if (score >= 50) {
         const failedPillars = lmaGaps.filter(g => g.status === 'FAIL').map(g => g.pillar);
         if (failedPillars.length > 0) {
-            parts.push(`<strong>CONDITIONAL APPROVAL</strong> possible. This ${category} shows green intent but fails ${failedPillars.length} LMA pillar(s): ${failedPillars.join(', ')}. Address these gaps before proceeding.`);
+            parts.push(`CONDITIONAL APPROVAL possible. This ${category} shows green intent but fails ${failedPillars.length} LMA pillar(s): ${failedPillars.join(', ')}. Address these gaps before proceeding.`);
         } else {
-            parts.push(`<strong>NEEDS ENHANCEMENT</strong>. This ${category} has partial green characteristics but lacks the specificity required for confident approval under green financing standards.`);
+            parts.push(`NEEDS ENHANCEMENT. This ${category} has partial green characteristics but lacks the specificity required for confident approval under green financing standards.`);
         }
     } else {
-        parts.push(`<strong>NOT RECOMMENDED</strong> for green loan classification. This application lacks sufficient green credentials. Score: ${score}/100.`);
+        parts.push(`NOT RECOMMENDED for green loan classification. This application lacks sufficient green credentials. Score: ${score}/100.`);
     }
 
     // --- KEY INSIGHT: What's actually blocking approval ---
     const primaryIssue = lmaResult.gap_analysis?.primary_blocker ||
         euResult.gap_analysis?.primary_blocker;
     if (primaryIssue && !lmaCompliant) {
-        parts.push(`\n\n<strong>Primary Barrier:</strong> ${primaryIssue.issue || primaryIssue}`);
+        parts.push(`\n\nPrimary Barrier: ${primaryIssue.issue || primaryIssue}`);
     }
 
     // --- INTELLIGENT RECOMMENDATIONS (not just listing gaps) ---
@@ -217,7 +216,7 @@ function generateNaturalLanguageExplanation(evaluationResult, attribution) {
             recommendations.push({
                 priority: 'HIGH',
                 title: 'Add Quantified Impact Metrics',
-                detail: `No measurable environmental claims found. Include specific numbers: installed capacity (MW), annual CO2 reduction (tonnes), energy savings (kWh/year), or jobs created`
+                detail: `No measurable environmental claims found. Include specific numbers: installed capacity (MW), annual CO2 reduction (tonnes), energy savings (kWh/year), or jobs created.`
             });
         } else if (evidenceMissing.length > 0) {
             recommendations.push({
@@ -243,16 +242,16 @@ function generateNaturalLanguageExplanation(evaluationResult, attribution) {
             recommendations.push({
                 priority: 'MEDIUM',
                 title: 'Verify Technical Thresholds',
-                detail: `Provide missing technical data for EU Taxonomy alignment (e.g., lifecycle emissions < 100g CO2e/kWh for energy projects). ${tscGap.issue}`
+                detail: `Provide missing technical data for EU Taxonomy alignment. ${tscGap.issue}`
             });
         }
     }
 
     // Output recommendations
     if (recommendations.length > 0) {
-        parts.push(`\n\n<strong>Strategic Recommendations:</strong>`);
+        parts.push(`\n\nStrategic Recommendations:`);
         for (const rec of recommendations.slice(0, 3)) {
-            parts.push(`\n• [${rec.priority}] <strong>${rec.title}:</strong> ${rec.detail}`);
+            parts.push(`\n• [${rec.priority}] ${rec.title}: ${rec.detail}`);
         }
     }
 
@@ -266,7 +265,7 @@ function generateNaturalLanguageExplanation(evaluationResult, attribution) {
             if (!strengths.includes(s.criterion)) strengths.push(s.criterion);
         }
         if (strengths.length > 0) {
-            parts.push(`\n\n<strong>Strengths:</strong> ${strengths.slice(0, 3).join(', ')} requirements satisfied.`);
+            parts.push(`\n\nStrengths: ${strengths.slice(0, 3).join(', ')} requirements satisfied.`);
         }
     }
 
@@ -275,11 +274,10 @@ function generateNaturalLanguageExplanation(evaluationResult, attribution) {
     if (metrics.energy_capacity?.value) {
         const capacity = metrics.energy_capacity.value;
         const unit = metrics.energy_capacity.unit?.toUpperCase() || 'MW';
-        // Estimate annual generation and CO2 impact
         if (unit === 'MW' || unit === 'mw') {
-            const annualMWh = capacity * 8760 * 0.25; // 25% capacity factor estimate
-            const co2Avoided = annualMWh * 0.4; // ~400kg CO2 per MWh displaced
-            parts.push(`\n\n<strong>Estimated Impact:</strong> ${capacity} ${unit} capacity → ~${Math.round(annualMWh / 1000)} GWh/year → ~${Math.round(co2Avoided / 1000)} tonnes CO2 avoided annually.`);
+            const annualMWh = capacity * 8760 * 0.25;
+            const co2Avoided = annualMWh * 0.4;
+            parts.push(`\n\nEstimated Impact: ${capacity} ${unit} capacity → ~${Math.round(annualMWh / 1000)} GWh/year → ~${Math.round(co2Avoided / 1000)} tonnes CO2 avoided annually.`);
         }
     }
 
@@ -287,19 +285,28 @@ function generateNaturalLanguageExplanation(evaluationResult, attribution) {
     const riskLevel = evaluationResult.greenwashing_risk?.risk_level;
     const riskFlags = evaluationResult.greenwashing_risk?.flags || [];
     if (riskLevel === 'HIGH') {
-        parts.push(`\n\n⚠️ <strong>GREENWASHING RISK HIGH:</strong> ${riskFlags[0]?.flag || 'Multiple vague claims require verification'}. Consider requesting third-party SPO or certification.`);
+        parts.push(`\n\n⚠️ GREENWASHING RISK HIGH: ${riskFlags[0]?.flag || 'Multiple vague claims require verification'}. Consider requesting third-party SPO or certification.`);
     } else if (riskLevel === 'MEDIUM' && riskFlags.length > 0) {
-        parts.push(`\n\n<strong>Note:</strong> ${riskFlags[0]?.flag}. Supporting documentation recommended.`);
+        parts.push(`\n\nNote: ${riskFlags[0]?.flag}. Supporting documentation recommended.`);
     }
 
     // --- APPROVAL PATHWAY ---
     if (!lmaCompliant && score >= 40) {
         const gapsToFix = lmaGaps.filter(g => g.status === 'FAIL').length;
-        parts.push(`\n\n**Path to Approval:** Address ${gapsToFix} critical gap(s) listed above. Estimated score improvement: +${Math.min(30, gapsToFix * 15)} points possible.`);
+        if (gapsToFix > 0) {
+            parts.push(`\n\nPath to Approval: Address ${gapsToFix} critical gap(s) listed above. Estimated score improvement: +${Math.min(30, gapsToFix * 15)} points possible.`);
+        }
     }
 
-    return parts.join('');
+    // Join and sanitize - remove any stray HTML/markdown
+    let result = parts.join('');
+    result = result.replace(/<\/?strong>/gi, '');
+    result = result.replace(/\*\*/g, '');
+    result = result.replace(/\*/g, '');
+
+    return result;
 }
+
 
 /**
  * Create full audit trail entry for a decision

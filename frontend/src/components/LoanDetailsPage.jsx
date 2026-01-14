@@ -222,7 +222,7 @@ export default function LoanDetailsPage() {
                             <span className="w-1 h-6 bg-purple-500 rounded-full"></span>
                             AI Analysis & Reasoning
                         </h3>
-                        <p className="text-lg text-gray-200 leading-relaxed font-light mb-4">
+                        <p className="text-lg text-gray-200 leading-relaxed font-light mb-4 whitespace-pre-line">
                             "{explainability?.natural_language_explanation || displayLoan.reasoning || "No specific reasoning provided."}"
                         </p>
 
@@ -353,7 +353,7 @@ export default function LoanDetailsPage() {
                                                     <h3 className="text-lg font-semibold text-white">{section.section}</h3>
                                                     {section.status && (
                                                         <span className={`text-sm font-medium ${section.status.includes('✅') ? 'text-green-400' :
-                                                                section.status.includes('❌') ? 'text-red-400' : 'text-amber-400'
+                                                            section.status.includes('❌') ? 'text-red-400' : 'text-amber-400'
                                                             }`}>
                                                             {section.status}
                                                         </span>
