@@ -1,10 +1,15 @@
 {
   "name": "ai-greenloan-advisor",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "version": "2.0.0",
+  "description": "VerdeScore - AI-Powered Green Loan Intelligence Platform",
+  "main": "backend/server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node backend/server.js",
+    "dev": "nodemon backend/server.js",
+    "build": "cd frontend && npm run build",
+    "install:all": "npm install && cd frontend && npm install",
+    "prod": "npm run build && npm start",
+    "test": "node tests/test_ai_direct.js"
   },
   "keywords": [],
   "author": "",

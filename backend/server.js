@@ -764,7 +764,22 @@ app.get('/api/info', (req, res) => {
     });
 });
 
+// ==================== SERVE FRONTEND (Production) ====================
+const path = require('path');
+const frontendPath = path.join(__dirname, '../frontend/dist');
+
+// Serve static files from frontend build
+app.use(express.static(frontendPath));
+
+// SPA catch-all - send all non-API routes to index.html
+// Express 5 requires named parameter, not wildcard
+app.get('/{*splat}', (req, res) => {
+    res.sendFile(path.join(frontendPath, 'index.html'));
+});
+
 
 app.listen(PORT, () => {
     console.log(`VerdeScore API v${API_VERSION} running on http://localhost:${PORT}`);
+    console.log(`Frontend served from: ${frontendPath}`);
 });
+

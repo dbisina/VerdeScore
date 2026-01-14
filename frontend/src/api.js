@@ -1,4 +1,5 @@
-const API_BASE = 'http://localhost:3001/api';
+// In production (same origin), use relative path. In dev, use localhost:3001
+const API_BASE = import.meta.env.VITE_API_URL || (window.location.port === '5173' ? 'http://localhost:3001/api' : '/api');
 
 export const fetchLoans = async () => {
     try {
