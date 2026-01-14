@@ -164,25 +164,25 @@ function generateNaturalLanguageExplanation(evaluationResult, attribution) {
     const category = semantic.primary_category?.category?.replace(/_/g, ' ') || 'unclassified project';
 
     if (score >= 80 && lmaCompliant && euAligned) {
-        parts.push(`**STRONG CANDIDATE** for green financing. This ${category} demonstrates comprehensive alignment with both LMA Green Loan Principles and EU Taxonomy criteria.`);
+        parts.push(`<strong>STRONG CANDIDATE</strong> for green financing. This ${category} demonstrates comprehensive alignment with both LMA Green Loan Principles and EU Taxonomy criteria.`);
     } else if (score >= 70 && lmaCompliant) {
-        parts.push(`**APPROVABLE** with conditions. This ${category} meets LMA GLP requirements but has ${euAligned ? 'solid' : 'gaps in'} EU Taxonomy alignment. ${euAligned ? '' : 'Consider if EU disclosure compliance is required for your portfolio.'}`);
+        parts.push(`<strong>APPROVABLE</strong> with conditions. This ${category} meets LMA GLP requirements but has ${euAligned ? 'solid' : 'gaps in'} EU Taxonomy alignment. ${euAligned ? '' : 'Consider if EU disclosure compliance is required for your portfolio.'}`);
     } else if (score >= 50) {
         const failedPillars = lmaGaps.filter(g => g.status === 'FAIL').map(g => g.pillar);
         if (failedPillars.length > 0) {
-            parts.push(`**CONDITIONAL APPROVAL** possible. This ${category} shows green intent but fails ${failedPillars.length} LMA pillar(s): **${failedPillars.join(', ')}**. Address these gaps before proceeding.`);
+            parts.push(`<strong>CONDITIONAL APPROVAL</strong> possible. This ${category} shows green intent but fails ${failedPillars.length} LMA pillar(s): ${failedPillars.join(', ')}. Address these gaps before proceeding.`);
         } else {
-            parts.push(`**NEEDS ENHANCEMENT**. This ${category} has partial green characteristics but lacks the specificity required for confident approval under green financing standards.`);
+            parts.push(`<strong>NEEDS ENHANCEMENT</strong>. This ${category} has partial green characteristics but lacks the specificity required for confident approval under green financing standards.`);
         }
     } else {
-        parts.push(`**NOT RECOMMENDED** for green loan classification. This application lacks sufficient green credentials. Score: ${score}/100.`);
+        parts.push(`<strong>NOT RECOMMENDED</strong> for green loan classification. This application lacks sufficient green credentials. Score: ${score}/100.`);
     }
 
     // --- KEY INSIGHT: What's actually blocking approval ---
     const primaryIssue = lmaResult.gap_analysis?.primary_blocker ||
         euResult.gap_analysis?.primary_blocker;
     if (primaryIssue && !lmaCompliant) {
-        parts.push(`\n\n**Primary Barrier:** ${primaryIssue.issue || primaryIssue}`);
+        parts.push(`\n\n<strong>Primary Barrier:</strong> ${primaryIssue.issue || primaryIssue}`);
     }
 
     // --- INTELLIGENT RECOMMENDATIONS (not just listing gaps) ---
@@ -217,7 +217,7 @@ function generateNaturalLanguageExplanation(evaluationResult, attribution) {
             recommendations.push({
                 priority: 'HIGH',
                 title: 'Add Quantified Impact Metrics',
-                detail: `No measurable environmental claims found. Include specific numbers: installed capacity (MW), annual CO2 reduction (tonnes), energy savings (kWh/year), or similar KPIs.`
+                detail: `No measurable environmental claims found. Include specific numbers: installed capacity (MW), annual CO2 reduction (tonnes), energy savings (kWh/year), or jobs created`
             });
         } else if (evidenceMissing.length > 0) {
             recommendations.push({
@@ -250,9 +250,9 @@ function generateNaturalLanguageExplanation(evaluationResult, attribution) {
 
     // Output recommendations
     if (recommendations.length > 0) {
-        parts.push(`\n\n**Strategic Recommendations:**`);
+        parts.push(`\n\n<strong>Strategic Recommendations:</strong>`);
         for (const rec of recommendations.slice(0, 3)) {
-            parts.push(`\n• [${rec.priority}] **${rec.title}:** ${rec.detail}`);
+            parts.push(`\n• [${rec.priority}] <strong>${rec.title}:</strong> ${rec.detail}`);
         }
     }
 
@@ -266,7 +266,7 @@ function generateNaturalLanguageExplanation(evaluationResult, attribution) {
             if (!strengths.includes(s.criterion)) strengths.push(s.criterion);
         }
         if (strengths.length > 0) {
-            parts.push(`\n\n**Strengths:** ${strengths.slice(0, 3).join(', ')} requirements satisfied.`);
+            parts.push(`\n\n<strong>Strengths:</strong> ${strengths.slice(0, 3).join(', ')} requirements satisfied.`);
         }
     }
 
@@ -279,7 +279,7 @@ function generateNaturalLanguageExplanation(evaluationResult, attribution) {
         if (unit === 'MW' || unit === 'mw') {
             const annualMWh = capacity * 8760 * 0.25; // 25% capacity factor estimate
             const co2Avoided = annualMWh * 0.4; // ~400kg CO2 per MWh displaced
-            parts.push(`\n\n**Estimated Impact:** ${capacity} ${unit} capacity → ~${Math.round(annualMWh / 1000)} GWh/year → ~${Math.round(co2Avoided / 1000)} tonnes CO2 avoided annually.`);
+            parts.push(`\n\n<strong>Estimated Impact:</strong> ${capacity} ${unit} capacity → ~${Math.round(annualMWh / 1000)} GWh/year → ~${Math.round(co2Avoided / 1000)} tonnes CO2 avoided annually.`);
         }
     }
 
@@ -287,9 +287,9 @@ function generateNaturalLanguageExplanation(evaluationResult, attribution) {
     const riskLevel = evaluationResult.greenwashing_risk?.risk_level;
     const riskFlags = evaluationResult.greenwashing_risk?.flags || [];
     if (riskLevel === 'HIGH') {
-        parts.push(`\n\n⚠️ **Credibility Alert:** High greenwashing risk detected. ${riskFlags[0]?.flag || 'Multiple vague claims require verification'}. Consider requesting third-party SPO or certification.`);
+        parts.push(`\n\n⚠️ <strong>GREENWASHING RISK HIGH:</strong> ${riskFlags[0]?.flag || 'Multiple vague claims require verification'}. Consider requesting third-party SPO or certification.`);
     } else if (riskLevel === 'MEDIUM' && riskFlags.length > 0) {
-        parts.push(`\n\n**Note:** ${riskFlags[0]?.flag}. Supporting documentation recommended.`);
+        parts.push(`\n\n<strong>Note:</strong> ${riskFlags[0]?.flag}. Supporting documentation recommended.`);
     }
 
     // --- APPROVAL PATHWAY ---
