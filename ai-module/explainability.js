@@ -144,88 +144,161 @@ function generateAttribution(evaluationResult) {
 
 /**
  * Generate natural language explanation of the decision
- * Now uses gap_analysis for specific, actionable explanations
+ * Provides intelligent, strategic analysis beyond just scores - helps users understand WHY and WHAT TO DO
  */
 function generateNaturalLanguageExplanation(evaluationResult, attribution) {
     const parts = [];
     const score = evaluationResult.green_score || attribution.attributed_score;
-    const lmaGaps = evaluationResult.lma_compliance?.gap_analysis?.gaps || [];
-    const euGaps = evaluationResult.eu_taxonomy?.gap_analysis?.gaps || [];
+    const riskScore = evaluationResult.risk_score || 0;
+    const lmaResult = evaluationResult.lma_compliance || {};
+    const euResult = evaluationResult.eu_taxonomy || {};
+    const semantic = evaluationResult.semantic || {};
+    const lmaGaps = lmaResult.gap_analysis?.gaps || [];
+    const euGaps = euResult.gap_analysis?.gaps || [];
+    const lmaStrengths = lmaResult.gap_analysis?.strengths || [];
+    const euStrengths = euResult.gap_analysis?.strengths || [];
 
-    // -- SPECIFIC OPENING based on what's actually wrong --
-    if (score >= 75 && lmaGaps.length === 0) {
-        parts.push(`APPROVED: This project scores ${score}/100 and meets green financing requirements.`);
+    // --- STRATEGIC ASSESSMENT OPENING ---
+    const lmaCompliant = lmaResult.glp_compliant || lmaResult.compliant;
+    const euAligned = euResult.eu_taxonomy_eligible || euResult.eligible;
+    const category = semantic.primary_category?.category?.replace(/_/g, ' ') || 'unclassified project';
+
+    if (score >= 80 && lmaCompliant && euAligned) {
+        parts.push(`**STRONG CANDIDATE** for green financing. This ${category} demonstrates comprehensive alignment with both LMA Green Loan Principles and EU Taxonomy criteria.`);
+    } else if (score >= 70 && lmaCompliant) {
+        parts.push(`**APPROVABLE** with conditions. This ${category} meets LMA GLP requirements but has ${euAligned ? 'solid' : 'gaps in'} EU Taxonomy alignment. ${euAligned ? '' : 'Consider if EU disclosure compliance is required for your portfolio.'}`);
     } else if (score >= 50) {
-        const blockingIssues = lmaGaps.filter(g => g.status === 'FAIL').map(g => g.pillar);
-        if (blockingIssues.length > 0) {
-            parts.push(`REVIEW REQUIRED: Score ${score}/100. Key issues: ${blockingIssues.join(', ')}.`);
+        const failedPillars = lmaGaps.filter(g => g.status === 'FAIL').map(g => g.pillar);
+        if (failedPillars.length > 0) {
+            parts.push(`**CONDITIONAL APPROVAL** possible. This ${category} shows green intent but fails ${failedPillars.length} LMA pillar(s): **${failedPillars.join(', ')}**. Address these gaps before proceeding.`);
         } else {
-            parts.push(`CONDITIONAL: Score ${score}/100. Minor gaps need addressing.`);
+            parts.push(`**NEEDS ENHANCEMENT**. This ${category} has partial green characteristics but lacks the specificity required for confident approval under green financing standards.`);
         }
     } else {
-        const primaryBlocker = evaluationResult.lma_compliance?.gap_analysis?.primary_blocker || lmaGaps[0];
-        if (primaryBlocker) {
-            parts.push(`BELOW THRESHOLD: Score ${score}/100. Primary issue: ${primaryBlocker.issue || primaryBlocker.pillar || 'Multiple gaps identified'}.`);
+        parts.push(`**NOT RECOMMENDED** for green loan classification. This application lacks sufficient green credentials. Score: ${score}/100.`);
+    }
+
+    // --- KEY INSIGHT: What's actually blocking approval ---
+    const primaryIssue = lmaResult.gap_analysis?.primary_blocker ||
+        euResult.gap_analysis?.primary_blocker;
+    if (primaryIssue && !lmaCompliant) {
+        parts.push(`\n\n**Primary Barrier:** ${primaryIssue.issue || primaryIssue}`);
+    }
+
+    // --- INTELLIGENT RECOMMENDATIONS (not just listing gaps) ---
+    const recommendations = [];
+
+    // Check Use of Proceeds alignment
+    const useOfProceedsGap = lmaGaps.find(g => g.pillar === 'Use of Proceeds');
+    if (useOfProceedsGap) {
+        const matchedCats = lmaResult.eligible_categories || [];
+        if (matchedCats.length === 0) {
+            recommendations.push({
+                priority: 'HIGH',
+                title: 'Clarify Green Purpose',
+                detail: `The project description doesn't clearly map to recognized green categories. Specify how this directly funds renewable energy, efficiency improvements, clean transport, or similar eligible activities.`
+            });
         } else {
-            parts.push(`BELOW THRESHOLD: Score ${score}/100. Multiple compliance gaps identified.`);
+            recommendations.push({
+                priority: 'MEDIUM',
+                title: 'Strengthen Category Alignment',
+                detail: `Project partially matches "${matchedCats[0]}" but needs stronger connection. Add project-specific details that demonstrate direct environmental benefit.`
+            });
         }
     }
 
-    // -- EXPLAIN LMA GLP GAPS SPECIFICALLY --
-    if (lmaGaps.length > 0 && !evaluationResult.lma_compliance?.compliant) {
-        parts.push(`\n\n**LMA Green Loan Principles Issues:**`);
-        for (const gap of lmaGaps.slice(0, 3)) {
-            parts.push(`• ${gap.pillar}: ${gap.issue}`);
-            if (gap.fix) {
-                parts.push(`  → Fix: ${gap.fix}`);
-            }
+    // Check for quantification issues
+    const projectEvalGap = lmaGaps.find(g => g.pillar === 'Project Evaluation');
+    if (projectEvalGap) {
+        const evidenceFound = lmaResult.components?.project_evaluation?.evidence_found || [];
+        const evidenceMissing = lmaResult.components?.project_evaluation?.evidence_missing || [];
+
+        if (evidenceFound.length === 0) {
+            recommendations.push({
+                priority: 'HIGH',
+                title: 'Add Quantified Impact Metrics',
+                detail: `No measurable environmental claims found. Include specific numbers: installed capacity (MW), annual CO2 reduction (tonnes), energy savings (kWh/year), or similar KPIs.`
+            });
+        } else if (evidenceMissing.length > 0) {
+            recommendations.push({
+                priority: 'MEDIUM',
+                title: 'Complete Impact Quantification',
+                detail: `Found ${evidenceFound.length} metric(s), but key data missing: ${evidenceMissing.slice(0, 2).join(', ')}. Adding these strengthens the business case.`
+            });
         }
     }
 
-    // -- EXPLAIN EU TAXONOMY GAPS SPECIFICALLY --  
-    if (euGaps.length > 0 && !evaluationResult.eu_taxonomy?.eligible) {
-        parts.push(`\n\n**EU Taxonomy Issues:**`);
-        for (const gap of euGaps.slice(0, 2)) {
-            parts.push(`• ${gap.criterion}: ${gap.issue}`);
-            if (gap.fix) {
-                parts.push(`  → Fix: ${gap.fix}`);
-            }
+    // EU Taxonomy specific insight
+    if (!euAligned && euGaps.length > 0) {
+        const dnshViolation = euGaps.find(g => g.criterion === 'Do No Significant Harm (DNSH)');
+        const tscGap = euGaps.find(g => g.criterion?.includes('Technical Screening'));
+
+        if (dnshViolation) {
+            recommendations.push({
+                priority: 'HIGH',
+                title: 'Address DNSH Concern',
+                detail: `EU Taxonomy requires demonstrating no significant harm to other environmental objectives. Issue: ${dnshViolation.detail?.split(';')[0] || 'Review project for harmful side effects'}.`
+            });
+        } else if (tscGap && tscGap.status === 'PARTIAL') {
+            recommendations.push({
+                priority: 'MEDIUM',
+                title: 'Verify Technical Thresholds',
+                detail: `Provide missing technical data for EU Taxonomy alignment (e.g., lifecycle emissions < 100g CO2e/kWh for energy projects). ${tscGap.issue}`
+            });
         }
     }
 
-    // -- WHAT'S WORKING (brief) --
-    const lmaStrengths = evaluationResult.lma_compliance?.gap_analysis?.strengths || [];
-    const euStrengths = evaluationResult.eu_taxonomy?.gap_analysis?.strengths || [];
+    // Output recommendations
+    if (recommendations.length > 0) {
+        parts.push(`\n\n**Strategic Recommendations:**`);
+        for (const rec of recommendations.slice(0, 3)) {
+            parts.push(`\n• [${rec.priority}] **${rec.title}:** ${rec.detail}`);
+        }
+    }
+
+    // --- WHAT'S WORKING (validation for the applicant) ---
     if (lmaStrengths.length > 0 || euStrengths.length > 0) {
-        const allStrengths = [...lmaStrengths, ...euStrengths].slice(0, 2);
-        if (allStrengths.length > 0) {
-            parts.push(`\n\n**Strengths:** ${allStrengths.map(s => s.pillar || s.criterion).join(', ')} criteria met.`);
+        const strengths = [];
+        for (const s of lmaStrengths) {
+            strengths.push(s.pillar);
+        }
+        for (const s of euStrengths) {
+            if (!strengths.includes(s.criterion)) strengths.push(s.criterion);
+        }
+        if (strengths.length > 0) {
+            parts.push(`\n\n**Strengths:** ${strengths.slice(0, 3).join(', ')} requirements satisfied.`);
         }
     }
 
-    // -- QUANTIFIED METRICS FOUND --
-    const metrics = evaluationResult.semantic?.quantified_metrics || {};
-    const metricCount = Object.keys(metrics).length;
-    if (metricCount > 0) {
-        const metricList = [];
-        if (metrics.energy_capacity) metricList.push(`${metrics.energy_capacity.value} ${metrics.energy_capacity.unit}`);
-        if (metrics.carbon_reduction) metricList.push(`${metrics.carbon_reduction.value} ${metrics.carbon_reduction.unit} CO2`);
-        if (metrics.energy_generated) metricList.push(`${metrics.energy_generated.value} ${metrics.energy_generated.unit}/year`);
-        parts.push(`\n\n**Metrics detected:** ${metricList.join(', ')}.`);
-    } else {
-        parts.push(`\n\n**Missing metrics:** No quantified environmental data found. Add specific numbers (e.g., "50 MW capacity", "43,800 tonnes CO2 avoided").`);
+    // --- MARKET CONTEXT (intelligent insight) ---
+    const metrics = semantic.quantified_metrics || {};
+    if (metrics.energy_capacity?.value) {
+        const capacity = metrics.energy_capacity.value;
+        const unit = metrics.energy_capacity.unit?.toUpperCase() || 'MW';
+        // Estimate annual generation and CO2 impact
+        if (unit === 'MW' || unit === 'mw') {
+            const annualMWh = capacity * 8760 * 0.25; // 25% capacity factor estimate
+            const co2Avoided = annualMWh * 0.4; // ~400kg CO2 per MWh displaced
+            parts.push(`\n\n**Estimated Impact:** ${capacity} ${unit} capacity → ~${Math.round(annualMWh / 1000)} GWh/year → ~${Math.round(co2Avoided / 1000)} tonnes CO2 avoided annually.`);
+        }
     }
 
-    // -- GREENWASHING RISK --
+    // --- GREENWASHING RISK CONTEXT ---
     const riskLevel = evaluationResult.greenwashing_risk?.risk_level;
     const riskFlags = evaluationResult.greenwashing_risk?.flags || [];
     if (riskLevel === 'HIGH') {
-        parts.push(`\n\n⚠️ **GREENWASHING RISK HIGH:** ${riskFlags.slice(0, 2).map(f => f.flag).join('; ')}. Third-party verification required.`);
+        parts.push(`\n\n⚠️ **Credibility Alert:** High greenwashing risk detected. ${riskFlags[0]?.flag || 'Multiple vague claims require verification'}. Consider requesting third-party SPO or certification.`);
     } else if (riskLevel === 'MEDIUM' && riskFlags.length > 0) {
-        parts.push(`\n\n**Credibility concern:** ${riskFlags[0].flag}. Consider adding verification.`);
+        parts.push(`\n\n**Note:** ${riskFlags[0]?.flag}. Supporting documentation recommended.`);
     }
 
-    return parts.join('\n');
+    // --- APPROVAL PATHWAY ---
+    if (!lmaCompliant && score >= 40) {
+        const gapsToFix = lmaGaps.filter(g => g.status === 'FAIL').length;
+        parts.push(`\n\n**Path to Approval:** Address ${gapsToFix} critical gap(s) listed above. Estimated score improvement: +${Math.min(30, gapsToFix * 15)} points possible.`);
+    }
+
+    return parts.join('');
 }
 
 /**

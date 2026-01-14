@@ -120,12 +120,14 @@ app.post('/api/loans/:id/deep-analysis', async (req, res) => {
 
         // LMA GLP Compliance
         if (aiResult.lma_compliance) {
-            const lmaStatus = aiResult.lma_compliance.glp_compliant ? '✅ COMPLIANT' : '❌ NOT COMPLIANT';
+            const lmaScore = aiResult.lma_compliance.overall_glp_score ?? aiResult.lma_compliance.score ?? 0;
+            const lmaCompliant = aiResult.lma_compliance.glp_compliant ?? aiResult.lma_compliance.compliant ?? false;
+            const lmaStatus = lmaCompliant ? '✅ COMPLIANT' : '❌ NOT COMPLIANT';
             analysis.push({
                 section: 'LMA Green Loan Principles',
                 status: lmaStatus,
-                score: aiResult.lma_compliance.overall_glp_score,
-                content: aiResult.lma_compliance.gap_analysis?.summary || `Score: ${aiResult.lma_compliance.overall_glp_score}/100`,
+                score: lmaScore,
+                content: aiResult.lma_compliance.gap_analysis?.summary || `Score: ${lmaScore}/100`,
                 gaps: lmaGaps.map(g => ({
                     pillar: g.pillar,
                     issue: g.issue,
@@ -143,13 +145,18 @@ app.post('/api/loans/:id/deep-analysis', async (req, res) => {
 
         // EU Taxonomy
         if (aiResult.eu_taxonomy) {
-            const euStatus = aiResult.eu_taxonomy.eu_taxonomy_eligible ? '✅ ALIGNED' : '❌ NOT ALIGNED';
+            const euAligned = aiResult.eu_taxonomy.eu_taxonomy_eligible ?? aiResult.eu_taxonomy.eligible ?? false;
+            const euStatus = euAligned ? '✅ ALIGNED' : '❌ NOT ALIGNED';
+            // Use gap analysis summary which is consistent with aligned status, not the potentially conflicting summary
+            const euContent = euAligned
+                ? (aiResult.eu_taxonomy.gap_analysis?.summary || aiResult.eu_taxonomy.summary)
+                : (aiResult.eu_taxonomy.gap_analysis?.summary || `Not EU Taxonomy aligned. ${aiResult.eu_taxonomy.gap_analysis?.primary_blocker || ''}`);
             analysis.push({
                 section: 'EU Taxonomy Regulation',
                 status: euStatus,
                 score: aiResult.eu_taxonomy.alignment_score,
                 primary_objective: aiResult.eu_taxonomy.substantial_contribution?.primary_objective,
-                content: aiResult.eu_taxonomy.gap_analysis?.summary || aiResult.eu_taxonomy.summary,
+                content: euContent,
                 gaps: euGaps.map(g => ({
                     criterion: g.criterion,
                     issue: g.issue,
