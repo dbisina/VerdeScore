@@ -1,0 +1,157 @@
+openapi: 3.0.0
+info:
+  title: VerdeScore AI GreenLoan API
+  description: API for semantic green loan analysis, compliance verification, and explainable AI scoring.
+  version: 2.0.0-semantic
+servers:
+  - url: http://localhost:3001
+    description: Local Development Server
+
+paths:
+  /api/info:
+    get:
+      summary: Get API capabilities and version
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  version:
+                    type: string
+                    example: "2.0.0-semantic"
+                  capabilities:
+                    type: array
+                    items:
+                      type: string
+
+  /api/loans:
+    get:
+      summary: List all loans
+      responses:
+        "200":
+          description: List of loans
+    post:
+      summary: Submit a new loan for AI analysis
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - applicant_name
+                - amount
+                - purpose
+              properties:
+                applicant_name:
+                  type: string
+                amount:
+                  type: number
+                purpose:
+                  type: string
+                  description: Detailed project description for semantic analysis
+      responses:
+        "200":
+          description: Loan analyzed and created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      green_score:
+                        type: integer
+                      semantic:
+                        type: object
+                        description: Semantic analysis results
+                      explainability:
+                        type: object
+                        description: Feature attribution and natural language explanation
+
+  /api/loans/{id}/explainability:
+    get:
+      summary: Get detailed explainability data for a loan
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Explainability data including attribution
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      attribution:
+                        type: object
+                      improvement_suggestions:
+                        type: array
+                      natural_language_explanation:
+                        type: string
+
+  /api/loans/{id}/audit:
+    get:
+      summary: Get decision audit trail
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Full audit trail logs
+
+  /api/loans/{id}/documents:
+    post:
+      summary: Upload and analyze a project document
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                document:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Document analyzed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      semantic_score:
+                        type: integer
+                      evidence_found:
+                        type: array
+                        items:
+                          type: string
+
+  /api/benchmarks:
+    get:
+      summary: Get processing time benchmarks
+      responses:
+        "200":
+          description: Benchmarking stats vs manual review

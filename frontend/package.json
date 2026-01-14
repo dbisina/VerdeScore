@@ -1,0 +1,45 @@
+{
+    "name": "verdescore",
+    "private": true,
+    "version": "1.0.0",
+    "type": "module",
+    "main": "electron-main.cjs",
+    "scripts": {
+        "dev": "vite",
+        "build": "vite build",
+        "preview": "vite preview",
+        "electron": "concurrently -k \"npm run dev\" \"wait-on tcp:5173 && electron .\""
+    },
+    "dependencies": {
+        "@radix-ui/react-avatar": "^1.1.11",
+        "@radix-ui/react-slot": "^1.2.4",
+        "chart.js": "^4.4.0",
+        "class-variance-authority": "^0.7.1",
+        "clsx": "^2.1.1",
+        "cobe": "^0.6.5",
+        "electron-squirrel-startup": "^1.0.1",
+        "framer-motion": "^12.23.26",
+        "lucide-react": "^0.344.0",
+        "react": "^18.3.0",
+        "react-chartjs-2": "^5.2.0",
+        "react-dom": "^18.3.0",
+        "react-router-dom": "^6.22.0",
+        "recharts": "^3.5.1",
+        "tailwind-merge": "^3.4.0"
+    },
+    "devDependencies": {
+        "@tailwindcss/postcss": "^4.1.18",
+        "@types/node": "^25.0.1",
+        "@types/react": "^18.3.27",
+        "@types/react-dom": "^18.3.7",
+        "@vitejs/plugin-react": "^4.2.1",
+        "autoprefixer": "^10.4.22",
+        "concurrently": "^8.2.0",
+        "electron": "^29.0.0",
+        "postcss": "^8.5.6",
+        "tailwindcss": "^4.1.18",
+        "typescript": "^5.9.3",
+        "vite": "^5.2.0",
+        "wait-on": "^7.2.0"
+    }
+}
