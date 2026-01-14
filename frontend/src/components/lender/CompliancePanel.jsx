@@ -72,7 +72,7 @@ export default function CompliancePanel({ lmaCompliance, euTaxonomy, greenwashin
                 </div>
             )}
 
-            {/* EU Taxonomy Details */}
+            {/* EU Taxonomy Details - Enhanced with explanations */}
             {euTaxonomy && (
                 <div className="p-5 rounded-2xl bg-white/5 border border-white/10">
                     <h4 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
@@ -80,29 +80,84 @@ export default function CompliancePanel({ lmaCompliance, euTaxonomy, greenwashin
                         EU Taxonomy Assessment
                     </h4>
 
+                    {/* Primary Objective with explanation */}
                     {euTaxonomy.primary_objective && (
-                        <div className="mb-3 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
-                            <div className="text-xs text-blue-300 mb-1">Primary Objective</div>
+                        <div className="mb-4 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                            <div className="text-xs text-blue-300 mb-1">Primary Environmental Objective</div>
                             <div className="text-white font-medium">{euTaxonomy.primary_objective}</div>
+                            <p className="text-xs text-gray-400 mt-1">
+                                This project substantially contributes to {euTaxonomy.primary_objective?.toLowerCase()}.
+                            </p>
                         </div>
                     )}
 
-                    <div className="grid grid-cols-2 gap-3 text-sm">
-                        <div className="flex items-center gap-2">
-                            {euTaxonomy.dnsh_passed ? (
-                                <CheckCircle size={14} className="text-green-400" />
-                            ) : (
-                                <XCircle size={14} className="text-red-400" />
-                            )}
-                            <span className="text-gray-300">DNSH Check</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <BarChart2 size={14} className="text-purple-400" />
-                            <span className="text-gray-300">{euTaxonomy.activity_type?.type || 'N/A'}</span>
-                        </div>
+                    {/* Compliance Checklist with explanations */}
+                    <div className="space-y-3 mb-4">
+                        <ComplianceItem
+                            passed={euTaxonomy.dnsh_passed}
+                            label="Do No Significant Harm (DNSH)"
+                            explanation={euTaxonomy.dnsh_passed
+                                ? "No significant harm to other environmental objectives detected"
+                                : "Potential harm to other objectives requires review"}
+                        />
+                        <ComplianceItem
+                            passed={euTaxonomy.eligible}
+                            label="Technical Screening Criteria"
+                            explanation={euTaxonomy.technical_criteria?.matched_activity
+                                ? `Matches: ${euTaxonomy.technical_criteria.matched_activity}`
+                                : "Activity type requires manual classification"}
+                        />
+                        <ComplianceItem
+                            passed={euTaxonomy.score >= 50}
+                            label="Substantial Contribution"
+                            explanation={`Alignment score: ${euTaxonomy.score}/100`}
+                        />
                     </div>
 
-                    <p className="text-xs text-gray-500 mt-3">{euTaxonomy.summary}</p>
+                    {/* Technical Criteria Thresholds */}
+                    {euTaxonomy.technical_criteria?.validation?.validated?.length > 0 && (
+                        <div className="mb-4 p-3 rounded-lg bg-white/5 border border-white/10">
+                            <div className="text-xs text-gray-400 mb-2">Threshold Verification</div>
+                            <div className="space-y-2">
+                                {euTaxonomy.technical_criteria.validation.validated.map((v, i) => (
+                                    <div key={i} className="flex items-center justify-between text-xs">
+                                        <span className="text-gray-300">{v.metric.replace(/_/g, ' ')}</span>
+                                        <span className={v.status === 'PASS' ? 'text-green-400' : 'text-red-400'}>
+                                            {v.found} {v.status === 'PASS' ? '✓' : '✗'} (required: {v.required})
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Missing thresholds */}
+                    {euTaxonomy.technical_criteria?.validation?.missing?.length > 0 && (
+                        <div className="mb-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                            <div className="text-xs text-amber-400 mb-2 flex items-center gap-1">
+                                <AlertTriangle size={12} />
+                                Missing Threshold Data
+                            </div>
+                            <ul className="space-y-1">
+                                {euTaxonomy.technical_criteria.validation.missing.slice(0, 3).map((m, i) => (
+                                    <li key={i} className="text-xs text-gray-400">
+                                        • {m.description} ({m.required})
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+
+                    {/* Activity Type Badge */}
+                    <div className="flex items-center gap-2 mb-3">
+                        <BarChart2 size={14} className="text-purple-400" />
+                        <span className="text-xs text-gray-300">
+                            {euTaxonomy.activity_type?.type || 'N/A'}: {euTaxonomy.activity_type?.description || ''}
+                        </span>
+                    </div>
+
+                    {/* Summary */}
+                    <p className="text-xs text-gray-400 p-2 bg-white/5 rounded-lg">{euTaxonomy.summary}</p>
                 </div>
             )}
 
@@ -112,8 +167,8 @@ export default function CompliancePanel({ lmaCompliance, euTaxonomy, greenwashin
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     className={`p-4 rounded-xl border ${greenwashingRisk.risk_level === 'HIGH'
-                            ? 'bg-red-500/10 border-red-500/30'
-                            : 'bg-amber-500/10 border-amber-500/30'
+                        ? 'bg-red-500/10 border-red-500/30'
+                        : 'bg-amber-500/10 border-amber-500/30'
                         }`}
                 >
                     <div className="flex items-start gap-3">
@@ -172,6 +227,26 @@ function ScoreCard({ title, score, icon, status, statusColor }) {
             </div>
             <div className="text-xs text-gray-500 mb-1">{title}</div>
             <div className={`text-2xl font-bold ${getScoreColor(score)}`}>{score}/100</div>
+        </div>
+    );
+}
+
+function ComplianceItem({ passed, label, explanation }) {
+    return (
+        <div className="flex items-start gap-3 p-2 rounded-lg bg-white/5">
+            <div className="mt-0.5">
+                {passed ? (
+                    <CheckCircle size={14} className="text-green-400" />
+                ) : (
+                    <XCircle size={14} className="text-red-400" />
+                )}
+            </div>
+            <div className="flex-1">
+                <div className={`text-xs font-medium ${passed ? 'text-green-400' : 'text-red-400'}`}>
+                    {label}
+                </div>
+                <p className="text-xs text-gray-500 mt-0.5">{explanation}</p>
+            </div>
         </div>
     );
 }

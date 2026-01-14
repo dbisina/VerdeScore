@@ -9,7 +9,11 @@
     "build": "cd frontend && npm install --include=dev && npm run build",
     "install:all": "npm install && cd frontend && npm install",
     "prod": "npm run build && npm start",
-    "test": "node tests/test_ai_direct.js"
+    "test": "node tests/test_ai_direct.js",
+    "demo": "node scripts/demo.js",
+    "demo:local": "node scripts/demo.js --local",
+    "demo:quick": "node scripts/demo.js --quick",
+    "seed:prod": "node scripts/seed-production.js"
   },
   "keywords": [],
   "author": "",

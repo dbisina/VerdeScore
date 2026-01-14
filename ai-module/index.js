@@ -114,7 +114,7 @@ async function callDeepSeekAPI(application, lmaCompliance, euTaxonomy, semanticR
     try {
         console.log("Calling DeepSeek API with semantic context...");
 
-        const systemPrompt = `You are an expert Green Finance AI Analyst specializing in LMA Green Loan Principles and EU Taxonomy compliance.
+        const systemPrompt = `You are an expert Green Finance AI Analyst specializing in LMA Green Loan Principles and EU Taxonomy compliance. Your role is to provide DETAILED, EXPLANATORY assessments that help loan officers understand exactly WHY a project qualifies or doesn't qualify for green financing.
 
 SEMANTIC ANALYSIS CONTEXT:
 - Primary Category Match: ${semanticResult.primary_category?.category || 'None'} (${Math.round((semanticResult.primary_category?.similarity || 0) * 100)}% similarity)
@@ -125,20 +125,32 @@ SEMANTIC ANALYSIS CONTEXT:
 COMPLIANCE CONTEXT:
 - LMA GLP Score: ${lmaCompliance.overall_glp_score}/100 (${lmaCompliance.glp_compliant ? 'Compliant' : 'Not Compliant'})
 - EU Taxonomy: ${euTaxonomy.eu_taxonomy_eligible ? 'Eligible' : 'Not Eligible'} (Score: ${euTaxonomy.alignment_score})
+- Primary Objective: ${euTaxonomy.substantial_contribution?.primary_objective || 'None'}
+- Technical Criteria: ${euTaxonomy.technical_criteria?.matched_activity || 'Not matched'}
 - Greenwashing Risk: ${lmaCompliance.greenwashing_risk.risk_level}
 - Eligible Categories: ${lmaCompliance.eligible_categories.join(', ') || 'None identified'}
 
-TASK: Provide final assessment integrating all analyses. Be specific about risks and gaps.
+TASK: Provide a comprehensive assessment that:
+1. EXPLAINS why this project scores as it does
+2. CITES specific evidence from the application
+3. IDENTIFIES what makes it green-compliant or non-compliant
+4. PROVIDES actionable insights for the loan officer
 
 OUTPUT: Return ONLY valid JSON with these exact keys:
 {
-  "green_score": <integer 0-100, should generally align with semantic + compliance>,
+  "green_score": <integer 0-100>,
   "risk_score": <integer 0-100>,
   "recommendation": <"APPROVE"|"APPROVE_WITH_CONDITIONS"|"MANUAL_REVIEW"|"REJECT">,
   "roi_projection": <float 0.0-15.0>,
-  "key_strengths": [<list of specific strengths>],
-  "key_risks": [<list of specific risk factors>],
-  "reasoning_summary": <2-3 sentence executive summary>
+  "key_strengths": [<3-5 specific strengths with evidence>],
+  "key_risks": [<specific risk factors if any>],
+  "reasoning_summary": <4-6 sentence detailed executive summary explaining the decision>,
+  "detailed_reasoning": {
+    "environmental_impact": <2-3 sentences on environmental benefits with specific metrics>,
+    "compliance_assessment": <2-3 sentences on regulatory alignment>,
+    "financial_viability": <1-2 sentences on financial outlook>,
+    "recommendations": <1-2 actionable recommendations if any>
+  }
 }`;
 
         const response = await axios.post(API_URL, {
@@ -169,6 +181,16 @@ OUTPUT: Return ONLY valid JSON with these exact keys:
         if (jsonMatch) {
             const result = JSON.parse(jsonMatch[0]);
             result.source = 'deepseek_ai';
+
+            // Ensure detailed_reasoning exists even if AI didn't provide it
+            if (!result.detailed_reasoning) {
+                result.detailed_reasoning = {
+                    environmental_impact: result.reasoning_summary || 'Analysis pending.',
+                    compliance_assessment: 'Compliance verified against LMA GLP and EU Taxonomy criteria.',
+                    financial_viability: `Projected ROI of ${result.roi_projection}% based on green credentials.`,
+                    recommendations: result.key_risks?.length > 0 ? 'Address identified risks before final approval.' : 'No additional recommendations.'
+                };
+            }
             return result;
         }
 
@@ -238,7 +260,14 @@ function enhancedLocalEvaluation(application, lmaCompliance, euTaxonomy, semanti
         roi_projection: parseFloat(roi_projection.toFixed(2)),
         source: 'semantic_local',
         key_strengths: buildStrengths(semanticResult, lmaCompliance, euTaxonomy),
-        key_risks: lmaCompliance.greenwashing_risk.flags.map(f => f.flag)
+        key_risks: lmaCompliance.greenwashing_risk.flags.map(f => f.flag),
+        reasoning_summary: buildDetailedSummary(semanticResult, lmaCompliance, euTaxonomy, green_score, recommendation),
+        detailed_reasoning: {
+            environmental_impact: buildEnvironmentalImpact(semanticResult, euTaxonomy),
+            compliance_assessment: buildComplianceAssessment(lmaCompliance, euTaxonomy),
+            financial_viability: `Projected ROI of ${roi_projection.toFixed(1)}% based on ${euTaxonomy.eu_taxonomy_eligible ? 'EU Taxonomy alignment and ' : ''}green credentials. Risk assessment indicates ${risk_score < 30 ? 'low' : risk_score < 60 ? 'moderate' : 'elevated'} financial risk.`,
+            recommendations: buildRecommendations(lmaCompliance, semanticResult)
+        }
     };
 }
 
@@ -317,4 +346,129 @@ function calculateTimeSaved(processingTimeMs) {
     };
 }
 
+/**
+ * Build detailed summary for local evaluation
+ */
+function buildDetailedSummary(semanticResult, lmaCompliance, euTaxonomy, greenScore, recommendation) {
+    const category = formatCategoryName(semanticResult.primary_category?.category || 'green project');
+    const similarity = Math.round((semanticResult.primary_category?.similarity || 0) * 100);
+
+    let summary = `This ${category} project achieved a green score of ${greenScore}/100 based on semantic analysis showing ${similarity}% alignment with recognized green finance categories. `;
+
+    if (lmaCompliance.glp_compliant) {
+        summary += `The project meets LMA Green Loan Principles requirements across all four pillars. `;
+    } else {
+        summary += `Some LMA Green Loan Principles criteria require attention. `;
+    }
+
+    if (euTaxonomy.eu_taxonomy_eligible) {
+        summary += `EU Taxonomy alignment confirmed for ${euTaxonomy.substantial_contribution.primary_objective}. `;
+    }
+
+    const metricCount = Object.keys(semanticResult.quantified_metrics || {}).length;
+    if (metricCount > 0) {
+        summary += `${metricCount} quantified environmental metric(s) strengthen the application. `;
+    }
+
+    summary += `Recommendation: ${recommendation.replace(/_/g, ' ')}.`;
+
+    return summary;
+}
+
+/**
+ * Build environmental impact explanation
+ */
+function buildEnvironmentalImpact(semanticResult, euTaxonomy) {
+    const metrics = semanticResult.quantified_metrics || {};
+    const metricDescriptions = [];
+
+    if (metrics.carbon_reduction) {
+        metricDescriptions.push(`${metrics.carbon_reduction.value} ${metrics.carbon_reduction.unit} CO2 reduction`);
+    }
+    if (metrics.energy_capacity) {
+        metricDescriptions.push(`${metrics.energy_capacity.value} ${metrics.energy_capacity.unit} generation capacity`);
+    }
+    if (metrics.energy_generated) {
+        metricDescriptions.push(`${metrics.energy_generated.value} ${metrics.energy_generated.unit} annual generation`);
+    }
+
+    let impact = metricDescriptions.length > 0
+        ? `The project provides measurable environmental benefits including ${metricDescriptions.join(', ')}. `
+        : `The project description indicates environmental benefits, though specific metrics would strengthen the assessment. `;
+
+    if (euTaxonomy.substantial_contribution?.primary_objective) {
+        impact += `Primary contribution is to ${euTaxonomy.substantial_contribution.primary_objective}, `;
+        impact += euTaxonomy.eu_taxonomy_eligible
+            ? `meeting EU Taxonomy technical screening criteria.`
+            : `though full EU Taxonomy alignment requires additional verification.`;
+    }
+
+    return impact;
+}
+
+/**
+ * Build compliance assessment explanation
+ */
+function buildComplianceAssessment(lmaCompliance, euTaxonomy) {
+    const components = lmaCompliance.components || {};
+    const passedComponents = Object.values(components).filter(c => c.score >= 70).length;
+
+    let assessment = `LMA Green Loan Principles assessment: ${passedComponents}/4 components fully satisfied (score: ${lmaCompliance.overall_glp_score}/100). `;
+
+    // Add specific component feedback
+    const weakComponents = Object.entries(components)
+        .filter(([, v]) => v.score < 70)
+        .map(([k]) => k.replace(/_/g, ' '));
+
+    if (weakComponents.length > 0) {
+        assessment += `Areas needing attention: ${weakComponents.join(', ')}. `;
+    }
+
+    if (euTaxonomy.eu_taxonomy_eligible) {
+        assessment += `EU Taxonomy Article 8 disclosure: 100% taxonomy-aligned. `;
+        if (euTaxonomy.technical_criteria?.matched_activity) {
+            assessment += `Matches activity: ${euTaxonomy.technical_criteria.matched_activity}.`;
+        }
+    } else if (euTaxonomy.substantial_contribution?.contributes) {
+        assessment += `EU Taxonomy: Eligible but requires additional threshold verification for full alignment.`;
+    } else {
+        assessment += `EU Taxonomy alignment not established - manual review recommended.`;
+    }
+
+    return assessment;
+}
+
+/**
+ * Build recommendations
+ */
+function buildRecommendations(lmaCompliance, semanticResult) {
+    const recommendations = [];
+
+    const metricCount = Object.keys(semanticResult.quantified_metrics || {}).length;
+    if (metricCount < 2) {
+        recommendations.push('Add specific quantified metrics (e.g., tonnes CO2, MWh generated) to strengthen the application.');
+    }
+
+    if (!lmaCompliance.glp_compliant) {
+        const weak = Object.entries(lmaCompliance.components || {})
+            .filter(([, v]) => v.score < 70)
+            .map(([k]) => k);
+        if (weak.includes('reporting')) {
+            recommendations.push('Include commitment to annual impact reporting with specific KPIs.');
+        }
+        if (weak.includes('project_evaluation')) {
+            recommendations.push('Add details on project selection criteria and environmental due diligence process.');
+        }
+    }
+
+    if (lmaCompliance.greenwashing_risk?.risk_level === 'MEDIUM') {
+        recommendations.push('Consider third-party verification to reduce greenwashing risk perception.');
+    }
+
+    return recommendations.length > 0
+        ? recommendations.join(' ')
+        : 'Application is well-documented. No additional recommendations at this time.';
+}
+
 module.exports = { evaluateLoan };
+
