@@ -102,108 +102,252 @@ app.post('/api/loans/:id/deep-analysis', async (req, res) => {
         });
         const processingTime = Date.now() - startTime;
 
-        // 3. Build comprehensive deep analysis response
+        // 3. Build comprehensive executive-level deep analysis response
         const lmaGaps = aiResult.lma_compliance?.gap_analysis?.gaps || [];
         const lmaStrengths = aiResult.lma_compliance?.gap_analysis?.strengths || [];
         const euGaps = aiResult.eu_taxonomy?.gap_analysis?.gaps || [];
         const euStrengths = aiResult.eu_taxonomy?.gap_analysis?.strengths || [];
 
-        // Build conversational analysis
+        const lmaScore = aiResult.lma_compliance?.overall_glp_score ?? aiResult.lma_compliance?.score ?? 0;
+        const lmaCompliant = aiResult.lma_compliance?.glp_compliant ?? aiResult.lma_compliance?.compliant ?? false;
+        const euScore = aiResult.eu_taxonomy?.alignment_score ?? 0;
+        const euAligned = aiResult.eu_taxonomy?.eu_taxonomy_eligible ?? aiResult.eu_taxonomy?.eligible ?? false;
+        const riskScore = aiResult.risk_score ?? 50;
+        const greenScore = aiResult.green_score ?? 0;
+        const greenwashingRisk = aiResult.greenwashing_risk?.risk_level || 'UNKNOWN';
+
+        // Determine overall status
+        let overallStatus = 'NEEDS ENHANCEMENT';
+        let statusEmoji = '⚠️';
+        if (greenScore >= 80 && lmaCompliant && euAligned) {
+            overallStatus = 'STRONG CANDIDATE';
+            statusEmoji = '✅';
+        } else if (greenScore >= 70 && lmaCompliant) {
+            overallStatus = 'APPROVABLE WITH CONDITIONS';
+            statusEmoji = '🟡';
+        } else if (greenScore < 50) {
+            overallStatus = 'NOT RECOMMENDED';
+            statusEmoji = '❌';
+        }
+
+        // Build executive summary
+        const category = aiResult.semantic?.primary_category?.category?.replace(/_/g, ' ') || 'unclassified project';
+        let execSummary = `The loan application for $${Number(loan.amount).toLocaleString()} is currently flagged as "${overallStatus}."`;
+
+        if (overallStatus === 'NEEDS ENHANCEMENT') {
+            execSummary += ` While the project has ${riskScore <= 30 ? 'low' : riskScore <= 60 ? 'moderate' : 'elevated'} financial risk and ${greenwashingRisk === 'LOW' ? 'legitimate' : 'questionable'} ${category} characteristics, the documentation lacks the specificity required to meet strict green financing standards (LMA Green Loan Principles and EU Taxonomy).`;
+        } else if (overallStatus === 'STRONG CANDIDATE') {
+            execSummary += ` This ${category} demonstrates comprehensive alignment with both LMA Green Loan Principles and EU Taxonomy criteria. Recommended for Green Loan classification.`;
+        } else if (overallStatus === 'NOT RECOMMENDED') {
+            execSummary += ` This application lacks sufficient green credentials for Green Loan classification. Consider as conventional financing only.`;
+        }
+
+        // Build key metrics table
+        const keyMetrics = [
+            {
+                metric: 'LMA GLP Score',
+                value: `${lmaScore}/100`,
+                status: lmaCompliant ? '✅ Compliant' : '❌ Not Compliant',
+                detail: lmaCompliant ? null : '(Threshold usually >75-80)'
+            },
+            {
+                metric: 'EU Taxonomy',
+                value: `${euScore}/100`,
+                status: euAligned ? '✅ Aligned' : '❌ Not Aligned',
+                detail: null
+            },
+            {
+                metric: 'Financial Risk',
+                value: `${riskScore}/100`,
+                status: riskScore <= 30 ? '✅ Low Risk' : riskScore <= 60 ? '🟡 Moderate Risk' : '⚠️ Elevated Risk',
+                detail: riskScore <= 30 ? '(Safe to lend financially)' : null
+            },
+            {
+                metric: 'Greenwashing Risk',
+                value: greenwashingRisk,
+                status: greenwashingRisk === 'LOW' ? '✅ Legit project' : greenwashingRisk === 'MEDIUM' ? '🟡 Needs verification' : '🚨 High concern',
+                detail: greenwashingRisk === 'LOW' ? '(just poor documentation)' : null
+            }
+        ];
+
+        // Add CO2 metrics if available
+        const co2Metric = aiResult.semantic?.quantified_metrics?.carbon_reduction;
+        if (co2Metric) {
+            keyMetrics.push({
+                metric: 'CO2 Offset',
+                value: `${co2Metric.value} ${co2Metric.unit}/yr`,
+                status: '🌿 Positive Environmental Impact',
+                detail: null
+            });
+        }
+
+        // Build compliance gaps deep dive
+        const complianceGaps = [];
+
+        // Use of Proceeds analysis
+        const useOfProceedsComp = aiResult.lma_compliance?.components?.use_of_proceeds;
+        if (useOfProceedsComp && useOfProceedsComp.score < 70) {
+            complianceGaps.push({
+                title: 'Vague "Use of Proceeds"',
+                score: `${useOfProceedsComp.score}%`,
+                issue: `The application ${useOfProceedsComp.matched_categories?.length > 0 ? `lists "${useOfProceedsComp.matched_categories[0]}" broadly` : 'does not clearly specify eligible green categories'} but doesn't detail exactly how the $${Number(loan.amount).toLocaleString()} will be spent (e.g., procurement of specific equipment vs. general admin costs).`,
+                fix: 'Needs a distinct breakdown of capital allocation towards green assets with specific line items.',
+                priority: 'HIGH'
+            });
+        }
+
+        // Project Evaluation analysis  
+        const projEvalComp = aiResult.lma_compliance?.components?.project_evaluation;
+        if (projEvalComp && projEvalComp.score < 70) {
+            complianceGaps.push({
+                title: 'Project Evaluation Weakness',
+                score: `${projEvalComp.score}%`,
+                issue: 'This is a weak category. The environmental objectives are assessed but not clearly articulated with quantifiable targets.',
+                fix: 'The client must define specific environmental objectives (e.g., "Climate Change Mitigation") and include measurable KPIs like installed capacity, annual generation, or emissions avoided.',
+                priority: 'HIGH'
+            });
+        }
+
+        // Reporting analysis
+        const reportingComp = aiResult.lma_compliance?.components?.reporting;
+        if (reportingComp && reportingComp.score < 70) {
+            complianceGaps.push({
+                title: 'Reporting Commitment Gap',
+                score: `${reportingComp.score}%`,
+                issue: 'No clear commitment to post-disbursement impact reporting on green metrics.',
+                fix: 'Condition approval on agreement to provide annual impact reports with specific metrics (MWh generated, CO2 avoided, etc.).',
+                priority: 'MEDIUM'
+            });
+        }
+
+        // EU Taxonomy gaps
+        if (!euAligned) {
+            const tscGap = euGaps.find(g => g.criterion?.includes('Technical'));
+            if (tscGap) {
+                complianceGaps.push({
+                    title: 'EU Taxonomy Misalignment',
+                    score: 'FAIL',
+                    issue: `The project "Substantially contributes" to ${aiResult.eu_taxonomy?.substantial_contribution?.primary_objective || 'climate change mitigation'} but fails specific Technical Screening Criteria.`,
+                    fix: 'Requires manual classification of activity types to prove it meets the "Do No Significant Harm" (DNSH) criteria and specific thresholds.',
+                    priority: 'MEDIUM'
+                });
+            }
+        }
+
+        // Build recommended strategy
+        let strategy = '';
+        if (greenwashingRisk === 'LOW' && riskScore <= 40) {
+            strategy = `Since the Greenwashing Risk is Low and the Financial Risk is ${riskScore <= 30 ? 'Low' : 'Moderate'}, this is a good candidate for approval IF the documentation can be fixed. You should NOT reject the loan, but rather request specific amendments.`;
+        } else if (greenwashingRisk === 'HIGH') {
+            strategy = 'Due to elevated greenwashing concerns, this application requires third-party verification (SPO) before consideration for Green Loan classification. Consider as conventional loan only until verified.';
+        } else {
+            strategy = 'This application requires documentation improvements before Green Loan approval. Request amendments addressing the gaps identified below.';
+        }
+
+        // Build immediate actions
+        const immediateActions = [];
+
+        if (complianceGaps.some(g => g.title.includes('Use of Proceeds'))) {
+            immediateActions.push({
+                priority: 'HIGH',
+                action: 'Request More Info',
+                detail: `Ask ${loan.applicant_name} to provide a detailed "Use of Proceeds" breakdown showing exact capital allocation.`,
+                type: 'request'
+            });
+        }
+
+        if (complianceGaps.some(g => g.title.includes('Project Evaluation'))) {
+            immediateActions.push({
+                priority: 'HIGH',
+                action: 'Revise Project Description',
+                detail: `The description needs to shift from general "${category}" to specific technical categories recognized by the EU Taxonomy (e.g., specific NACE codes).`,
+                type: 'revision'
+            });
+        }
+
+        if (complianceGaps.some(g => g.title.includes('Reporting'))) {
+            const energyMetric = aiResult.semantic?.quantified_metrics?.energy_generated;
+            immediateActions.push({
+                priority: 'MEDIUM',
+                action: 'Impact Reporting Commitment',
+                detail: `Condition loan approval on agreement to provide annual impact reports${energyMetric ? ` (specifically verifying the ${energyMetric.value} ${energyMetric.unit}/year generation)` : ''}.`,
+                type: 'condition'
+            });
+        }
+
+        if (!euAligned) {
+            immediateActions.push({
+                priority: 'MEDIUM',
+                action: 'Technical Screening Documentation',
+                detail: 'Request technical specifications proving compliance with EU Taxonomy thresholds for the specific activity type.',
+                type: 'request'
+            });
+        }
+
+        // Build the analysis array for frontend
         let analysis = [];
 
-        // Executive Summary
+        // 1. Executive Summary
         analysis.push({
             section: 'Executive Summary',
-            content: aiResult.reasoning || aiResult.explainability?.natural_language || 'Analysis complete.',
+            status: `${statusEmoji} ${overallStatus}`,
+            content: execSummary,
             type: 'summary'
         });
 
-        // LMA GLP Compliance
-        if (aiResult.lma_compliance) {
-            const lmaScore = aiResult.lma_compliance.overall_glp_score ?? aiResult.lma_compliance.score ?? 0;
-            const lmaCompliant = aiResult.lma_compliance.glp_compliant ?? aiResult.lma_compliance.compliant ?? false;
-            const lmaStatus = lmaCompliant ? '✅ COMPLIANT' : '❌ NOT COMPLIANT';
+        // 2. Key Metrics at a Glance
+        analysis.push({
+            section: 'Key Metrics at a Glance',
+            metrics: keyMetrics,
+            type: 'metrics'
+        });
+
+        // 3. Deep Dive: Compliance Gaps
+        if (complianceGaps.length > 0) {
             analysis.push({
-                section: 'LMA Green Loan Principles',
-                status: lmaStatus,
-                score: lmaScore,
-                content: aiResult.lma_compliance.gap_analysis?.summary || `Score: ${lmaScore}/100`,
-                gaps: lmaGaps.map(g => ({
-                    pillar: g.pillar,
-                    issue: g.issue,
-                    detail: g.detail,
-                    fix: g.fix,
-                    status: g.status
-                })),
-                strengths: lmaStrengths.map(s => ({
-                    pillar: s.pillar,
-                    detail: s.detail
-                })),
-                type: 'compliance'
+                section: 'Deep Dive: The Compliance Gaps',
+                content: `The AI has identified ${complianceGaps.length} specific area(s) where the application is failing to meet Green Loan standards:`,
+                gaps: complianceGaps,
+                type: 'gaps'
             });
         }
 
-        // EU Taxonomy
-        if (aiResult.eu_taxonomy) {
-            const euAligned = aiResult.eu_taxonomy.eu_taxonomy_eligible ?? aiResult.eu_taxonomy.eligible ?? false;
-            const euStatus = euAligned ? '✅ ALIGNED' : '❌ NOT ALIGNED';
-            // Use gap analysis summary which is consistent with aligned status, not the potentially conflicting summary
-            const euContent = euAligned
-                ? (aiResult.eu_taxonomy.gap_analysis?.summary || aiResult.eu_taxonomy.summary)
-                : (aiResult.eu_taxonomy.gap_analysis?.summary || `Not EU Taxonomy aligned. ${aiResult.eu_taxonomy.gap_analysis?.primary_blocker || ''}`);
+        // 4. Strengths (what's working)
+        const allStrengths = [...lmaStrengths, ...euStrengths];
+        if (allStrengths.length > 0) {
             analysis.push({
-                section: 'EU Taxonomy Regulation',
-                status: euStatus,
-                score: aiResult.eu_taxonomy.alignment_score,
-                primary_objective: aiResult.eu_taxonomy.substantial_contribution?.primary_objective,
-                content: euContent,
-                gaps: euGaps.map(g => ({
-                    criterion: g.criterion,
-                    issue: g.issue,
-                    detail: g.detail,
-                    fix: g.fix,
-                    status: g.status
+                section: 'What\'s Working',
+                content: 'These aspects of the application meet Green Loan requirements:',
+                strengths: allStrengths.map(s => ({
+                    area: s.pillar || s.criterion,
+                    detail: s.detail,
+                    status: '✅ PASS'
                 })),
-                strengths: euStrengths.map(s => ({
-                    criterion: s.criterion,
-                    detail: s.detail
-                })),
-                alignment_pathway: aiResult.eu_taxonomy.gap_analysis?.alignment_pathway,
-                type: 'compliance'
+                type: 'strengths'
             });
         }
 
-        // Greenwashing Assessment
-        if (aiResult.greenwashing_risk) {
-            const riskEmoji = aiResult.greenwashing_risk.risk_level === 'HIGH' ? '🚨' :
-                aiResult.greenwashing_risk.risk_level === 'MEDIUM' ? '⚠️' : '✅';
-            analysis.push({
-                section: 'Greenwashing Risk Assessment',
-                status: `${riskEmoji} ${aiResult.greenwashing_risk.risk_level} RISK`,
-                score: 100 - aiResult.greenwashing_risk.risk_score,
-                content: aiResult.greenwashing_risk.recommendation,
-                flags: aiResult.greenwashing_risk.flags?.map(f => f.flag || f) || [],
-                type: 'risk'
-            });
-        }
+        // 5. Recommended Strategy
+        analysis.push({
+            section: 'Recommended Strategy',
+            content: strategy,
+            recommendation: overallStatus === 'STRONG CANDIDATE' ? 'APPROVE' :
+                overallStatus === 'NOT RECOMMENDED' ? 'REJECT OR CONVENTIONAL' : 'REQUEST AMENDMENTS',
+            type: 'strategy'
+        });
 
-        // Improvement Actions
-        const suggestions = aiResult.explainability?.improvement_suggestions || [];
-        if (suggestions.length > 0) {
+        // 6. Immediate Actions
+        if (immediateActions.length > 0) {
             analysis.push({
-                section: 'Recommended Actions',
-                content: 'Actions to improve green credentials:',
-                actions: suggestions.slice(0, 5).map(s => ({
-                    priority: s.priority,
-                    category: s.category,
-                    action: s.suggestion,
-                    potential_gain: s.potential_gain
-                })),
+                section: 'Immediate Actions (Priority Order)',
+                actions: immediateActions,
+                followup_prompt: overallStatus !== 'STRONG CANDIDATE' ?
+                    `Would you like me to draft a "Request for Information" email to ${loan.applicant_name} outlining exactly which data points are missing for their Green Loan approval?` : null,
                 type: 'actions'
             });
         }
 
-        // Semantic Insights
+        // 7. Semantic Understanding
         if (aiResult.semantic) {
             analysis.push({
                 section: 'AI Understanding',
@@ -218,16 +362,20 @@ app.post('/api/loans/:id/deep-analysis', async (req, res) => {
             status: 'success',
             loan_id: loanId,
             applicant: loan.applicant_name,
-            overall_score: aiResult.green_score,
-            recommendation: aiResult.recommendation,
+            amount: loan.amount,
+            overall_status: overallStatus,
+            overall_score: greenScore,
+            recommendation: overallStatus === 'STRONG CANDIDATE' ? 'APPROVE' :
+                overallStatus === 'NOT RECOMMENDED' ? 'REJECT' : 'REQUEST_AMENDMENTS',
             processing_time_ms: processingTime,
             analysis: analysis,
             raw_scores: {
-                green_score: aiResult.green_score,
-                risk_score: aiResult.risk_score,
-                lma_score: aiResult.lma_compliance?.overall_glp_score,
-                eu_score: aiResult.eu_taxonomy?.alignment_score,
-                semantic_score: aiResult.semantic?.semantic_score
+                green_score: greenScore,
+                risk_score: riskScore,
+                lma_score: lmaScore,
+                eu_score: euScore,
+                semantic_score: aiResult.semantic?.semantic_score,
+                greenwashing_risk: greenwashingRisk
             }
         });
 

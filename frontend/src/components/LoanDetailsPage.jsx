@@ -334,16 +334,20 @@ export default function LoanDetailsPage() {
                                     </div>
                                 ) : deepAnalysis ? (
                                     <>
-                                        {/* Score Summary */}
-                                        <div className="grid grid-cols-5 gap-3">
-                                            {Object.entries(deepAnalysis.raw_scores || {}).map(([key, value]) => (
-                                                <div key={key} className="p-3 rounded-xl bg-white/5 text-center">
-                                                    <div className={`text-2xl font-bold ${value >= 70 ? 'text-green-400' : value >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
-                                                        {value || 0}
-                                                    </div>
-                                                    <div className="text-xs text-gray-500 capitalize">{key.replace(/_/g, ' ')}</div>
-                                                </div>
-                                            ))}
+                                        {/* Overall Status Banner */}
+                                        <div className={`p-4 rounded-xl ${deepAnalysis.overall_status === 'STRONG CANDIDATE' ? 'bg-green-500/20 border border-green-500/30' :
+                                                deepAnalysis.overall_status === 'NOT RECOMMENDED' ? 'bg-red-500/20 border border-red-500/30' :
+                                                    'bg-amber-500/20 border border-amber-500/30'
+                                            }`}>
+                                            <div className="flex items-center justify-between">
+                                                <span className={`text-lg font-bold ${deepAnalysis.overall_status === 'STRONG CANDIDATE' ? 'text-green-400' :
+                                                        deepAnalysis.overall_status === 'NOT RECOMMENDED' ? 'text-red-400' :
+                                                            'text-amber-400'
+                                                    }`}>
+                                                    {deepAnalysis.overall_status}
+                                                </span>
+                                                <span className="text-2xl font-bold text-white">{deepAnalysis.overall_score}/100</span>
+                                            </div>
                                         </div>
 
                                         {/* Analysis Sections */}
@@ -353,7 +357,7 @@ export default function LoanDetailsPage() {
                                                     <h3 className="text-lg font-semibold text-white">{section.section}</h3>
                                                     {section.status && (
                                                         <span className={`text-sm font-medium ${section.status.includes('✅') ? 'text-green-400' :
-                                                            section.status.includes('❌') ? 'text-red-400' : 'text-amber-400'
+                                                                section.status.includes('❌') ? 'text-red-400' : 'text-amber-400'
                                                             }`}>
                                                             {section.status}
                                                         </span>
@@ -361,10 +365,114 @@ export default function LoanDetailsPage() {
                                                 </div>
 
                                                 {/* Content */}
-                                                <p className="text-gray-300 mb-4 whitespace-pre-line">{section.content}</p>
+                                                {section.content && (
+                                                    <p className="text-gray-300 mb-4 whitespace-pre-line">{section.content}</p>
+                                                )}
 
-                                                {/* Gaps */}
-                                                {section.gaps?.length > 0 && (
+                                                {/* Key Metrics Table */}
+                                                {section.type === 'metrics' && section.metrics && (
+                                                    <div className="overflow-x-auto">
+                                                        <table className="w-full text-sm">
+                                                            <thead>
+                                                                <tr className="border-b border-white/10">
+                                                                    <th className="text-left py-2 text-gray-400 font-medium">Metric</th>
+                                                                    <th className="text-center py-2 text-gray-400 font-medium">Score / Value</th>
+                                                                    <th className="text-right py-2 text-gray-400 font-medium">Status</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {section.metrics.map((m, j) => (
+                                                                    <tr key={j} className="border-b border-white/5">
+                                                                        <td className="py-3 text-white font-medium">{m.metric}</td>
+                                                                        <td className="py-3 text-center text-gray-300">{m.value}</td>
+                                                                        <td className="py-3 text-right">
+                                                                            <span className={`${m.status.includes('✅') ? 'text-green-400' :
+                                                                                    m.status.includes('❌') ? 'text-red-400' :
+                                                                                        m.status.includes('🚨') ? 'text-red-400' : 'text-amber-400'
+                                                                                }`}>
+                                                                                {m.status}
+                                                                            </span>
+                                                                            {m.detail && <span className="text-xs text-gray-500 ml-1">{m.detail}</span>}
+                                                                        </td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                )}
+
+                                                {/* Compliance Gaps - New Format */}
+                                                {section.type === 'gaps' && section.gaps?.length > 0 && (
+                                                    <div className="space-y-4">
+                                                        {section.gaps.map((gap, j) => (
+                                                            <div key={j} className="p-4 rounded-xl bg-red-500/10 border border-red-500/20">
+                                                                <div className="flex items-center justify-between mb-2">
+                                                                    <h4 className="font-semibold text-white flex items-center gap-2">
+                                                                        <span className="text-red-400">{j + 1}.</span> {gap.title}
+                                                                    </h4>
+                                                                    <span className="text-xs px-2 py-1 rounded bg-red-500/30 text-red-300">
+                                                                        Score: {gap.score}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="space-y-2 text-sm">
+                                                                    <p><span className="text-gray-400">The Issue:</span> <span className="text-gray-300">{gap.issue}</span></p>
+                                                                    <p><span className="text-green-400">The Fix:</span> <span className="text-green-300">{gap.fix}</span></p>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+
+                                                {/* Strengths */}
+                                                {section.type === 'strengths' && section.strengths?.length > 0 && (
+                                                    <div className="space-y-2">
+                                                        {section.strengths.map((s, j) => (
+                                                            <div key={j} className="flex items-start gap-2 text-sm p-2 rounded-lg bg-green-500/10">
+                                                                <CheckCircle size={14} className="text-green-400 mt-0.5 shrink-0" />
+                                                                <span className="text-gray-300"><strong className="text-white">{s.area}:</strong> {s.detail}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+
+                                                {/* Strategy Recommendation */}
+                                                {section.type === 'strategy' && section.recommendation && (
+                                                    <div className={`mt-3 p-3 rounded-lg ${section.recommendation === 'APPROVE' ? 'bg-green-500/20' :
+                                                            section.recommendation.includes('REJECT') ? 'bg-red-500/20' : 'bg-amber-500/20'
+                                                        }`}>
+                                                        <span className={`font-bold ${section.recommendation === 'APPROVE' ? 'text-green-400' :
+                                                                section.recommendation.includes('REJECT') ? 'text-red-400' : 'text-amber-400'
+                                                            }`}>
+                                                            Recommendation: {section.recommendation}
+                                                        </span>
+                                                    </div>
+                                                )}
+
+                                                {/* Actions with Details */}
+                                                {section.type === 'actions' && section.actions?.length > 0 && (
+                                                    <div className="space-y-3">
+                                                        {section.actions.map((action, j) => (
+                                                            <div key={j} className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                                                                <div className="flex items-center gap-2 mb-1">
+                                                                    <span className={`text-xs px-2 py-0.5 rounded font-medium ${action.priority === 'HIGH' ? 'bg-red-500/30 text-red-300' : 'bg-amber-500/30 text-amber-300'
+                                                                        }`}>
+                                                                        {action.priority}
+                                                                    </span>
+                                                                    <span className="font-semibold text-white">{action.action}</span>
+                                                                </div>
+                                                                <p className="text-sm text-gray-400">{action.detail}</p>
+                                                            </div>
+                                                        ))}
+                                                        {section.followup_prompt && (
+                                                            <div className="mt-4 p-3 rounded-lg bg-purple-500/10 border border-purple-500/20">
+                                                                <p className="text-sm text-purple-300 italic">{section.followup_prompt}</p>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                {/* Legacy format support */}
+                                                {section.gaps?.length > 0 && section.type !== 'gaps' && (
                                                     <div className="space-y-3 mb-4">
                                                         <div className="text-sm text-red-400 font-medium">Issues Found:</div>
                                                         {section.gaps.map((gap, j) => (
@@ -372,7 +480,7 @@ export default function LoanDetailsPage() {
                                                                 <div className="flex items-start gap-2">
                                                                     <XCircle size={16} className="text-red-400 mt-0.5 shrink-0" />
                                                                     <div>
-                                                                        <div className="text-sm font-medium text-white">{gap.pillar || gap.criterion}</div>
+                                                                        <div className="text-sm font-medium text-white">{gap.pillar || gap.criterion || gap.title}</div>
                                                                         <p className="text-xs text-red-300 mt-1">{gap.issue}</p>
                                                                         {gap.fix && (
                                                                             <p className="text-xs text-green-400 mt-2">💡 {gap.fix}</p>
@@ -384,41 +492,13 @@ export default function LoanDetailsPage() {
                                                     </div>
                                                 )}
 
-                                                {/* Strengths */}
-                                                {section.strengths?.length > 0 && (
-                                                    <div className="space-y-2">
-                                                        <div className="text-sm text-green-400 font-medium">Strengths:</div>
-                                                        {section.strengths.map((s, j) => (
-                                                            <div key={j} className="flex items-start gap-2 text-sm">
-                                                                <CheckCircle size={14} className="text-green-400 mt-0.5" />
-                                                                <span className="text-gray-300">{s.pillar || s.criterion}: {s.detail}</span>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                )}
-
-                                                {/* Actions */}
-                                                {section.actions?.length > 0 && (
-                                                    <div className="space-y-2 mt-3">
-                                                        {section.actions.map((action, j) => (
-                                                            <div key={j} className="flex items-start gap-2 p-2 rounded-lg bg-blue-500/10">
-                                                                <span className={`text-xs px-2 py-0.5 rounded ${action.priority === 'HIGH' ? 'bg-red-500/30 text-red-300' : 'bg-amber-500/30 text-amber-300'
-                                                                    }`}>
-                                                                    {action.priority}
-                                                                </span>
-                                                                <span className="text-sm text-gray-300">{action.action}</span>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                )}
-
-                                                {/* Flags */}
-                                                {section.flags?.length > 0 && (
-                                                    <div className="mt-3 space-y-1">
-                                                        {section.flags.map((flag, j) => (
-                                                            <div key={j} className="text-xs text-amber-400 flex items-center gap-1">
-                                                                <AlertTriangle size={12} /> {flag}
-                                                            </div>
+                                                {/* Semantic Metrics */}
+                                                {section.type === 'insight' && section.metrics_found && (
+                                                    <div className="mt-3 flex flex-wrap gap-2">
+                                                        {Object.entries(section.metrics_found).map(([key, val]) => (
+                                                            <span key={key} className="px-2 py-1 rounded-lg bg-purple-500/20 text-purple-300 text-xs">
+                                                                {key.replace(/_/g, ' ')}: {val.value} {val.unit}
+                                                            </span>
                                                         ))}
                                                     </div>
                                                 )}
