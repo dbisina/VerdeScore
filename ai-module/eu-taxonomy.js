@@ -252,7 +252,9 @@ function evaluateEUTaxonomy(application) {
         minimum_safeguards: minimumSafeguards,
         activity_type: determineActivityType(purpose),
         article_8_disclosure: generateArticle8Disclosure(isEligible, substantialContribution, tscMatch),
-        summary: generateTaxonomySummary(isEligible, substantialContribution, dnshCheck, thresholdValidation)
+        summary: generateTaxonomySummary(isEligible, substantialContribution, dnshCheck, thresholdValidation),
+        // NEW: Detailed gap analysis explaining non-alignment
+        gap_analysis: buildEUTaxonomyGapAnalysis(isEligible, substantialContribution, dnshCheck, thresholdValidation, tscMatch, minimumSafeguards)
     };
 }
 
@@ -542,6 +544,138 @@ function generateTaxonomySummary(isEligible, contribution, dnsh, thresholdValida
         return `EU Taxonomy POTENTIALLY ALIGNED - Missing TSC verification: ${thresholdValidation.missing.map(m => m.metric).join(', ')}`;
     }
     return 'EU Taxonomy alignment undetermined - manual review required';
+}
+
+/**
+ * Build detailed gap analysis for EU Taxonomy non-alignment
+ */
+function buildEUTaxonomyGapAnalysis(isEligible, contribution, dnsh, thresholdValidation, tscMatch, minimumSafeguards) {
+    const gaps = [];
+    const strengths = [];
+
+    // Substantial Contribution check
+    if (contribution.contributes) {
+        strengths.push({
+            criterion: 'Substantial Contribution',
+            status: 'PASS',
+            detail: `Contributes to ${contribution.primary_objective} with ${contribution.score}% alignment.`,
+            objectives: contribution.all_objectives?.map(o => o.objective) || []
+        });
+    } else {
+        gaps.push({
+            criterion: 'Substantial Contribution',
+            status: 'FAIL',
+            issue: 'No substantial contribution to any of the 6 EU Taxonomy environmental objectives.',
+            detail: 'The activity must substantially contribute to at least one objective: Climate Mitigation, Climate Adaptation, Water, Circular Economy, Pollution Prevention, or Biodiversity.',
+            fix: 'Clearly describe how the project contributes to climate change mitigation (e.g., renewable energy, emissions reduction) or another environmental objective with measurable impact.',
+            objectives_available: ['Climate Change Mitigation', 'Climate Change Adaptation', 'Water & Marine Resources', 'Circular Economy', 'Pollution Prevention', 'Biodiversity']
+        });
+    }
+
+    // DNSH check
+    if (dnsh.passes) {
+        strengths.push({
+            criterion: 'Do No Significant Harm (DNSH)',
+            status: 'PASS',
+            detail: 'No significant harm to other environmental objectives detected.'
+        });
+    } else {
+        gaps.push({
+            criterion: 'Do No Significant Harm (DNSH)',
+            status: 'FAIL',
+            issue: 'Activity may cause significant harm to other environmental objectives.',
+            detail: dnsh.violations.map(v => `${v.harm} (${v.severity} severity)`).join('; '),
+            fix: 'Remove or mitigate activities that harm other environmental objectives. For fossil fuels, demonstrate a clear phase-out plan.',
+            violations: dnsh.violations
+        });
+    }
+
+    // Technical Screening Criteria check
+    if (tscMatch) {
+        if (thresholdValidation.validated?.length > 0) {
+            const passed = thresholdValidation.validated.filter(v => v.status === 'PASS');
+            const failed = thresholdValidation.validated.filter(v => v.status === 'FAIL');
+
+            if (failed.length === 0 && thresholdValidation.missing?.length === 0) {
+                strengths.push({
+                    criterion: 'Technical Screening Criteria',
+                    status: 'PASS',
+                    detail: `All ${passed.length} thresholds verified for activity: ${tscMatch.activity}.`,
+                    thresholds: passed
+                });
+            } else if (failed.length > 0) {
+                gaps.push({
+                    criterion: 'Technical Screening Criteria',
+                    status: 'FAIL',
+                    issue: 'One or more technical thresholds not met.',
+                    detail: failed.map(f => `${f.metric}: found ${f.found}, required ${f.required}`).join('; '),
+                    fix: `Ensure project meets these thresholds: ${failed.map(f => `${f.metric} ${f.required}`).join(', ')}.`,
+                    failed_thresholds: failed
+                });
+            }
+        }
+
+        if (thresholdValidation.missing?.length > 0) {
+            gaps.push({
+                criterion: 'Technical Screening Criteria (Verification)',
+                status: 'PARTIAL',
+                issue: 'Some technical thresholds could not be verified from provided information.',
+                detail: thresholdValidation.missing.map(m => `${m.metric}: ${m.description} (${m.required})`).join('; '),
+                fix: `Add the following metrics to enable verification: ${thresholdValidation.missing.map(m => `${m.description}`).join(', ')}.`,
+                missing_thresholds: thresholdValidation.missing
+            });
+        }
+    } else {
+        gaps.push({
+            criterion: 'Technical Screening Criteria',
+            status: 'PARTIAL',
+            issue: 'Could not match activity to a specific EU Taxonomy technical screening criteria.',
+            detail: 'The activity type was not clearly identified as one of the defined taxonomy activities (e.g., solar PV, wind power, building renovation).',
+            fix: 'Specify the exact activity type (e.g., "electricity generation from solar photovoltaic", "renovation of existing building with 30% energy reduction").'
+        });
+    }
+
+    // Minimum Safeguards check
+    if (minimumSafeguards.compliant) {
+        strengths.push({
+            criterion: 'Minimum Safeguards',
+            status: 'PASS',
+            detail: 'No human rights or governance concerns identified.'
+        });
+    } else {
+        gaps.push({
+            criterion: 'Minimum Safeguards',
+            status: 'FAIL',
+            issue: 'Minimum safeguards concerns identified.',
+            detail: minimumSafeguards.concerns.join('; '),
+            fix: 'Ensure compliance with OECD Guidelines, UN Guiding Principles on Business and Human Rights, and ILO conventions.'
+        });
+    }
+
+    // Determine primary blocker
+    let primaryBlocker = null;
+    if (!contribution.contributes) {
+        primaryBlocker = 'No substantial contribution - project must clearly contribute to an environmental objective';
+    } else if (!dnsh.passes) {
+        primaryBlocker = 'DNSH violation - project harms other environmental objectives';
+    } else if (thresholdValidation.validated?.some(v => v.status === 'FAIL')) {
+        primaryBlocker = 'Technical threshold not met - specific criteria exceeded acceptable limits';
+    } else if (thresholdValidation.missing?.length > 0) {
+        primaryBlocker = 'Threshold verification incomplete - add missing metrics to confirm alignment';
+    }
+
+    return {
+        aligned: isEligible,
+        gap_count: gaps.length,
+        strength_count: strengths.length,
+        gaps: gaps,
+        strengths: strengths,
+        summary: isEligible
+            ? `EU Taxonomy aligned with ${strengths.length} criteria satisfied.`
+            : `Not EU Taxonomy aligned due to ${gaps.length} gap(s): ${gaps.map(g => g.criterion).join(', ')}.`,
+        primary_blocker: primaryBlocker,
+        alignment_pathway: isEligible ? null : gaps.map(g => g.fix).join(' ')
+    };
 }
 
 module.exports = {

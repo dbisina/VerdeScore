@@ -163,6 +163,20 @@ export const fetchLoanExplainability = async (id) => {
     }
 };
 
+export const fetchDeepAnalysis = async (id) => {
+    try {
+        const res = await fetch(`${API_BASE}/loans/${id}/deep-analysis`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        if (!res.ok) throw new Error('Network response was not ok');
+        return await res.json();
+    } catch (error) {
+        console.error("Failed to fetch deep analysis:", error);
+        throw error;
+    }
+};
+
 export const fetchBenchmarks = async () => {
     try {
         const res = await fetch(`${API_BASE}/benchmarks`);

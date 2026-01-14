@@ -72,6 +72,21 @@ export default function CompliancePanel({ lmaCompliance, euTaxonomy, greenwashin
                 </div>
             )}
 
+            {/* LMA Gap Analysis - Shows WHY not compliant */}
+            {lmaCompliance?.gap_analysis?.gaps?.length > 0 && (
+                <div className="p-5 rounded-2xl bg-red-500/5 border border-red-500/20">
+                    <h4 className="text-sm font-semibold text-red-400 mb-3 flex items-center gap-2">
+                        <AlertTriangle size={16} />
+                        LMA Compliance Gaps ({lmaCompliance.gap_analysis.gap_count})
+                    </h4>
+                    <div className="space-y-3">
+                        {lmaCompliance.gap_analysis.gaps.map((gap, i) => (
+                            <GapItem key={i} gap={gap} />
+                        ))}
+                    </div>
+                </div>
+            )}
+
             {/* EU Taxonomy Details - Enhanced with explanations */}
             {euTaxonomy && (
                 <div className="p-5 rounded-2xl bg-white/5 border border-white/10">
@@ -275,6 +290,48 @@ function ComponentBar({ label, score, tooltip }) {
             {tooltip && (
                 <div className="absolute bottom-full left-0 mb-2 p-2 bg-black/90 rounded-lg text-xs text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20 max-w-xs">
                     {tooltip}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function GapItem({ gap }) {
+    const statusColors = {
+        'FAIL': 'border-red-500/30 bg-red-500/10',
+        'PARTIAL': 'border-amber-500/30 bg-amber-500/10',
+        'PASS': 'border-green-500/30 bg-green-500/10'
+    };
+
+    const statusIcons = {
+        'FAIL': <XCircle size={14} className="text-red-400" />,
+        'PARTIAL': <AlertTriangle size={14} className="text-amber-400" />,
+        'PASS': <CheckCircle size={14} className="text-green-400" />
+    };
+
+    return (
+        <div className={`p-3 rounded-lg border ${statusColors[gap.status] || statusColors.PARTIAL}`}>
+            <div className="flex items-start gap-2 mb-2">
+                {statusIcons[gap.status]}
+                <div className="flex-1">
+                    <div className="text-xs font-semibold text-white">
+                        {gap.pillar || gap.criterion}
+                        {gap.score !== undefined && (
+                            <span className="ml-2 text-gray-500">({gap.score}/100)</span>
+                        )}
+                    </div>
+                    <p className="text-xs text-red-300 mt-1">{gap.issue}</p>
+                </div>
+            </div>
+
+            {gap.detail && (
+                <p className="text-xs text-gray-400 mb-2 pl-6">{gap.detail}</p>
+            )}
+
+            {gap.fix && (
+                <div className="pl-6 pt-2 border-t border-white/10">
+                    <div className="text-xs text-green-400 font-medium mb-1">💡 How to fix:</div>
+                    <p className="text-xs text-gray-300">{gap.fix}</p>
                 </div>
             )}
         </div>

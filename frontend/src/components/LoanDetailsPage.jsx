@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { motion } from 'framer-motion';
-import { BadgeCheck, Zap, TrendingUp, AlertTriangle, ArrowRight, Shield, Globe } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { BadgeCheck, Zap, TrendingUp, AlertTriangle, ArrowRight, Shield, Globe, Brain, X, Loader2, CheckCircle, XCircle } from 'lucide-react';
 import RepaymentVelocityGraph from './lender/performance/RepaymentVelocityGraph';
 import LoanAgingHeatmap from './lender/performance/LoanAgingHeatmap';
 import DefaultProbabilityCurve from './lender/performance/DefaultProbabilityCurve';
@@ -12,13 +12,16 @@ import ScreenTimeCard from './ui/screen-time-card';
 import { AttributionBreakdown, ImprovementSuggestions, BenchmarkDisplay, SemanticAnalysisCard } from './lender/ExplainabilityComponents';
 
 import { useParams } from 'react-router-dom';
-import { fetchLoans, fetchLoanExplainability, uploadLoanDocument } from '../api';
+import { fetchLoans, fetchLoanExplainability, uploadLoanDocument, fetchDeepAnalysis } from '../api';
 
 export default function LoanDetailsPage() {
     const { id } = useParams();
     const [loan, setLoan] = useState(null);
     const [explainability, setExplainability] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [deepAnalysis, setDeepAnalysis] = useState(null);
+    const [deepAnalysisLoading, setDeepAnalysisLoading] = useState(false);
+    const [showDeepAnalysis, setShowDeepAnalysis] = useState(false);
     const fileInputRef = useRef(null);
 
     const handleFileUpload = async (e) => {
@@ -37,6 +40,21 @@ export default function LoanDetailsPage() {
         } catch (err) {
             console.error(err);
             alert('Upload/Analysis failed. See console.');
+        }
+    };
+
+    const handleDeepAnalysis = async () => {
+        setDeepAnalysisLoading(true);
+        setShowDeepAnalysis(true);
+        try {
+            const result = await fetchDeepAnalysis(id);
+            if (result.status === 'success') {
+                setDeepAnalysis(result);
+            }
+        } catch (err) {
+            console.error('Deep analysis failed:', err);
+        } finally {
+            setDeepAnalysisLoading(false);
         }
     };
 
@@ -149,7 +167,7 @@ export default function LoanDetailsPage() {
                     </p>
                 </div>
 
-                <div className="flex gap-3">
+                <div className="flex gap-3 flex-wrap">
                     <input
                         type="file"
                         ref={fileInputRef}
@@ -157,6 +175,12 @@ export default function LoanDetailsPage() {
                         accept=".pdf"
                         onChange={handleFileUpload}
                     />
+                    <button
+                        onClick={handleDeepAnalysis}
+                        className="px-6 py-2.5 rounded-xl bg-purple-600/20 border border-purple-500/30 hover:bg-purple-600/30 text-purple-300 transition-all font-medium flex items-center gap-2"
+                    >
+                        <Brain size={18} /> Deep Analysis
+                    </button>
                     <button
                         onClick={() => fileInputRef.current?.click()}
                         className="px-6 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-white transition-all font-medium"
@@ -263,6 +287,160 @@ export default function LoanDetailsPage() {
                 </div>
 
             </div>
+
+            {/* Deep Analysis Modal */}
+            <AnimatePresence>
+                {showDeepAnalysis && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+                        onClick={() => setShowDeepAnalysis(false)}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            className="bg-[#0f172a] border border-white/10 rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-y-auto"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            {/* Modal Header */}
+                            <div className="sticky top-0 bg-[#0f172a] border-b border-white/10 p-6 flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-purple-500/20 flex items-center justify-center">
+                                        <Brain className="text-purple-400" size={20} />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-xl font-bold text-white">Deep AI Analysis</h2>
+                                        <p className="text-sm text-gray-400">{displayLoan.applicant_name}</p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => setShowDeepAnalysis(false)}
+                                    className="p-2 rounded-xl hover:bg-white/10 text-gray-400"
+                                >
+                                    <X size={20} />
+                                </button>
+                            </div>
+
+                            {/* Modal Content */}
+                            <div className="p-6 space-y-6">
+                                {deepAnalysisLoading ? (
+                                    <div className="flex flex-col items-center justify-center py-20">
+                                        <Loader2 className="w-12 h-12 text-purple-400 animate-spin mb-4" />
+                                        <p className="text-gray-400">Running deep AI analysis...</p>
+                                        <p className="text-sm text-gray-500 mt-2">Checking LMA GLP, EU Taxonomy, and greenwashing risk</p>
+                                    </div>
+                                ) : deepAnalysis ? (
+                                    <>
+                                        {/* Score Summary */}
+                                        <div className="grid grid-cols-5 gap-3">
+                                            {Object.entries(deepAnalysis.raw_scores || {}).map(([key, value]) => (
+                                                <div key={key} className="p-3 rounded-xl bg-white/5 text-center">
+                                                    <div className={`text-2xl font-bold ${value >= 70 ? 'text-green-400' : value >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
+                                                        {value || 0}
+                                                    </div>
+                                                    <div className="text-xs text-gray-500 capitalize">{key.replace(/_/g, ' ')}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        {/* Analysis Sections */}
+                                        {deepAnalysis.analysis?.map((section, i) => (
+                                            <div key={i} className="p-5 rounded-2xl bg-white/5 border border-white/10">
+                                                <div className="flex items-center justify-between mb-3">
+                                                    <h3 className="text-lg font-semibold text-white">{section.section}</h3>
+                                                    {section.status && (
+                                                        <span className={`text-sm font-medium ${section.status.includes('✅') ? 'text-green-400' :
+                                                                section.status.includes('❌') ? 'text-red-400' : 'text-amber-400'
+                                                            }`}>
+                                                            {section.status}
+                                                        </span>
+                                                    )}
+                                                </div>
+
+                                                {/* Content */}
+                                                <p className="text-gray-300 mb-4 whitespace-pre-line">{section.content}</p>
+
+                                                {/* Gaps */}
+                                                {section.gaps?.length > 0 && (
+                                                    <div className="space-y-3 mb-4">
+                                                        <div className="text-sm text-red-400 font-medium">Issues Found:</div>
+                                                        {section.gaps.map((gap, j) => (
+                                                            <div key={j} className="p-3 rounded-lg bg-red-500/10 border border-red-500/20">
+                                                                <div className="flex items-start gap-2">
+                                                                    <XCircle size={16} className="text-red-400 mt-0.5 shrink-0" />
+                                                                    <div>
+                                                                        <div className="text-sm font-medium text-white">{gap.pillar || gap.criterion}</div>
+                                                                        <p className="text-xs text-red-300 mt-1">{gap.issue}</p>
+                                                                        {gap.fix && (
+                                                                            <p className="text-xs text-green-400 mt-2">💡 {gap.fix}</p>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+
+                                                {/* Strengths */}
+                                                {section.strengths?.length > 0 && (
+                                                    <div className="space-y-2">
+                                                        <div className="text-sm text-green-400 font-medium">Strengths:</div>
+                                                        {section.strengths.map((s, j) => (
+                                                            <div key={j} className="flex items-start gap-2 text-sm">
+                                                                <CheckCircle size={14} className="text-green-400 mt-0.5" />
+                                                                <span className="text-gray-300">{s.pillar || s.criterion}: {s.detail}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+
+                                                {/* Actions */}
+                                                {section.actions?.length > 0 && (
+                                                    <div className="space-y-2 mt-3">
+                                                        {section.actions.map((action, j) => (
+                                                            <div key={j} className="flex items-start gap-2 p-2 rounded-lg bg-blue-500/10">
+                                                                <span className={`text-xs px-2 py-0.5 rounded ${action.priority === 'HIGH' ? 'bg-red-500/30 text-red-300' : 'bg-amber-500/30 text-amber-300'
+                                                                    }`}>
+                                                                    {action.priority}
+                                                                </span>
+                                                                <span className="text-sm text-gray-300">{action.action}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+
+                                                {/* Flags */}
+                                                {section.flags?.length > 0 && (
+                                                    <div className="mt-3 space-y-1">
+                                                        {section.flags.map((flag, j) => (
+                                                            <div key={j} className="text-xs text-amber-400 flex items-center gap-1">
+                                                                <AlertTriangle size={12} /> {flag}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+
+                                        {/* Processing Time */}
+                                        <div className="text-center text-xs text-gray-500">
+                                            Analysis completed in {deepAnalysis.processing_time_ms}ms
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="text-center py-20 text-gray-400">
+                                        Failed to load analysis. Please try again.
+                                    </div>
+                                )}
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }
+

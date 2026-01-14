@@ -144,66 +144,88 @@ function generateAttribution(evaluationResult) {
 
 /**
  * Generate natural language explanation of the decision
+ * Now uses gap_analysis for specific, actionable explanations
  */
 function generateNaturalLanguageExplanation(evaluationResult, attribution) {
     const parts = [];
     const score = evaluationResult.green_score || attribution.attributed_score;
-    const recommendation = evaluationResult.recommendation;
+    const lmaGaps = evaluationResult.lma_compliance?.gap_analysis?.gaps || [];
+    const euGaps = evaluationResult.eu_taxonomy?.gap_analysis?.gaps || [];
 
-    // Opening assessment
-    if (score >= 75) {
-        parts.push(`This application demonstrates strong green credentials with a score of ${score}/100.`);
+    // -- SPECIFIC OPENING based on what's actually wrong --
+    if (score >= 75 && lmaGaps.length === 0) {
+        parts.push(`APPROVED: This project scores ${score}/100 and meets green financing requirements.`);
     } else if (score >= 50) {
-        parts.push(`This application shows moderate green alignment with a score of ${score}/100, but has room for improvement.`);
+        const blockingIssues = lmaGaps.filter(g => g.status === 'FAIL').map(g => g.pillar);
+        if (blockingIssues.length > 0) {
+            parts.push(`REVIEW REQUIRED: Score ${score}/100. Key issues: ${blockingIssues.join(', ')}.`);
+        } else {
+            parts.push(`CONDITIONAL: Score ${score}/100. Minor gaps need addressing.`);
+        }
     } else {
-        parts.push(`This application has limited green credentials with a score of ${score}/100. Significant enhancements are recommended.`);
+        const primaryBlocker = evaluationResult.lma_compliance?.gap_analysis?.primary_blocker || lmaGaps[0];
+        if (primaryBlocker) {
+            parts.push(`BELOW THRESHOLD: Score ${score}/100. Primary issue: ${primaryBlocker.issue || primaryBlocker.pillar || 'Multiple gaps identified'}.`);
+        } else {
+            parts.push(`BELOW THRESHOLD: Score ${score}/100. Multiple compliance gaps identified.`);
+        }
     }
 
-    // Primary category alignment
-    const primaryCat = evaluationResult.semantic?.primary_category;
-    if (primaryCat && primaryCat.similarity > 0.5) {
-        parts.push(`The project most closely aligns with "${formatCategoryName(primaryCat.category)}" activities (${Math.round(primaryCat.similarity * 100)}% semantic match).`);
+    // -- EXPLAIN LMA GLP GAPS SPECIFICALLY --
+    if (lmaGaps.length > 0 && !evaluationResult.lma_compliance?.compliant) {
+        parts.push(`\n\n**LMA Green Loan Principles Issues:**`);
+        for (const gap of lmaGaps.slice(0, 3)) {
+            parts.push(`• ${gap.pillar}: ${gap.issue}`);
+            if (gap.fix) {
+                parts.push(`  → Fix: ${gap.fix}`);
+            }
+        }
     }
 
-    // Quantified metrics
+    // -- EXPLAIN EU TAXONOMY GAPS SPECIFICALLY --  
+    if (euGaps.length > 0 && !evaluationResult.eu_taxonomy?.eligible) {
+        parts.push(`\n\n**EU Taxonomy Issues:**`);
+        for (const gap of euGaps.slice(0, 2)) {
+            parts.push(`• ${gap.criterion}: ${gap.issue}`);
+            if (gap.fix) {
+                parts.push(`  → Fix: ${gap.fix}`);
+            }
+        }
+    }
+
+    // -- WHAT'S WORKING (brief) --
+    const lmaStrengths = evaluationResult.lma_compliance?.gap_analysis?.strengths || [];
+    const euStrengths = evaluationResult.eu_taxonomy?.gap_analysis?.strengths || [];
+    if (lmaStrengths.length > 0 || euStrengths.length > 0) {
+        const allStrengths = [...lmaStrengths, ...euStrengths].slice(0, 2);
+        if (allStrengths.length > 0) {
+            parts.push(`\n\n**Strengths:** ${allStrengths.map(s => s.pillar || s.criterion).join(', ')} criteria met.`);
+        }
+    }
+
+    // -- QUANTIFIED METRICS FOUND --
     const metrics = evaluationResult.semantic?.quantified_metrics || {};
     const metricCount = Object.keys(metrics).length;
     if (metricCount > 0) {
         const metricList = [];
-        if (metrics.energy_capacity) metricList.push(`${metrics.energy_capacity.value} ${metrics.energy_capacity.unit} capacity`);
-        if (metrics.carbon_reduction) metricList.push(`${metrics.carbon_reduction.value} ${metrics.carbon_reduction.unit} reduction`);
-        parts.push(`Quantified environmental claims include: ${metricList.join(', ')}.`);
+        if (metrics.energy_capacity) metricList.push(`${metrics.energy_capacity.value} ${metrics.energy_capacity.unit}`);
+        if (metrics.carbon_reduction) metricList.push(`${metrics.carbon_reduction.value} ${metrics.carbon_reduction.unit} CO2`);
+        if (metrics.energy_generated) metricList.push(`${metrics.energy_generated.value} ${metrics.energy_generated.unit}/year`);
+        parts.push(`\n\n**Metrics detected:** ${metricList.join(', ')}.`);
     } else {
-        parts.push(`No quantified environmental metrics were detected. Adding specific numbers (MW capacity, tonnes CO2 avoided) would strengthen the application.`);
+        parts.push(`\n\n**Missing metrics:** No quantified environmental data found. Add specific numbers (e.g., "50 MW capacity", "43,800 tonnes CO2 avoided").`);
     }
 
-    // Compliance status
-    if (evaluationResult.lma_compliance?.compliant && evaluationResult.eu_taxonomy?.eligible) {
-        parts.push(`The project meets both LMA Green Loan Principles and EU Taxonomy eligibility criteria.`);
-    } else if (evaluationResult.lma_compliance?.compliant) {
-        parts.push(`The project meets LMA Green Loan Principles but does not fully align with EU Taxonomy criteria.`);
-    } else if (evaluationResult.eu_taxonomy?.eligible) {
-        parts.push(`The project aligns with EU Taxonomy but has gaps in LMA GLP compliance.`);
-    }
-
-    // Risk factors
+    // -- GREENWASHING RISK --
     const riskLevel = evaluationResult.greenwashing_risk?.risk_level;
+    const riskFlags = evaluationResult.greenwashing_risk?.flags || [];
     if (riskLevel === 'HIGH') {
-        parts.push(`⚠️ HIGH GREENWASHING RISK: Multiple indicators suggest claims may be overstated. Manual review strongly recommended.`);
-    } else if (riskLevel === 'MEDIUM') {
-        parts.push(`Moderate greenwashing risk detected. Some claims would benefit from additional verification.`);
+        parts.push(`\n\n⚠️ **GREENWASHING RISK HIGH:** ${riskFlags.slice(0, 2).map(f => f.flag).join('; ')}. Third-party verification required.`);
+    } else if (riskLevel === 'MEDIUM' && riskFlags.length > 0) {
+        parts.push(`\n\n**Credibility concern:** ${riskFlags[0].flag}. Consider adding verification.`);
     }
 
-    // Recommendation
-    const recMap = {
-        'APPROVE': 'Recommended for green loan approval.',
-        'APPROVE_WITH_CONDITIONS': 'Approval recommended with conditions - request additional documentation.',
-        'MANUAL_REVIEW': 'Manual review by sustainability team recommended before decision.',
-        'REJECT': 'Does not meet green loan criteria. Consider as conventional loan or request project modifications.'
-    };
-    parts.push(recMap[recommendation] || '');
-
-    return parts.filter(p => p).join(' ');
+    return parts.join('\n');
 }
 
 /**

@@ -148,7 +148,9 @@ function evaluateLMACompliance(application) {
         greenwashing_risk: greenwashingRisk,
         eligible_categories: useOfProceeds.matched_categories,
         spo_simulation: spoSimulation,
-        monitoring_capability: assessMonitoringCapability(projectEvaluation, reporting)
+        monitoring_capability: assessMonitoringCapability(projectEvaluation, reporting),
+        // NEW: Explicit gap analysis explaining non-compliance
+        gap_analysis: buildGapAnalysis(useOfProceeds, projectEvaluation, managementOfProceeds, reporting, greenwashingRisk, glpCompliant)
     };
 }
 
@@ -470,6 +472,138 @@ function assessMonitoringCapability(projectEvaluation, reporting) {
         capability,
         recommendation,
         suggested_kpis: projectEvaluation.evidence_missing.slice(0, 3)
+    };
+}
+
+/**
+ * Build detailed gap analysis explaining non-compliance
+ */
+function buildGapAnalysis(useOfProceeds, projectEvaluation, managementOfProceeds, reporting, greenwashingRisk, isCompliant) {
+    const gaps = [];
+    const strengths = [];
+
+    // Pillar 1: Use of Proceeds
+    if (useOfProceeds.score >= 70) {
+        strengths.push({
+            pillar: 'Use of Proceeds',
+            status: 'PASS',
+            detail: `Project aligns with ${useOfProceeds.matched_categories.length} GLP eligible categories: ${useOfProceeds.matched_categories.join(', ')}.`
+        });
+    } else if (useOfProceeds.matched_categories.length > 0) {
+        gaps.push({
+            pillar: 'Use of Proceeds',
+            status: 'PARTIAL',
+            score: useOfProceeds.score,
+            issue: 'Weak alignment with LMA Green Loan Principles eligible categories.',
+            detail: `Matched categories (${useOfProceeds.matched_categories.join(', ')}) but score is only ${useOfProceeds.score}/100.`,
+            fix: 'Strengthen the connection to eligible green project categories by adding specific project scope details.'
+        });
+    } else {
+        gaps.push({
+            pillar: 'Use of Proceeds',
+            status: 'FAIL',
+            score: useOfProceeds.score,
+            issue: 'No clear alignment with any LMA GLP eligible green project category.',
+            detail: 'The project description does not match recognized categories like Renewable Energy, Energy Efficiency, Clean Transport, Green Buildings, etc.',
+            fix: 'Clearly specify how proceeds will fund one of the 10 LMA GLP eligible categories (e.g., renewable energy installation, building retrofit, clean transport).'
+        });
+    }
+
+    // Pillar 2: Project Evaluation & Selection
+    if (projectEvaluation.score >= 70) {
+        strengths.push({
+            pillar: 'Project Evaluation',
+            status: 'PASS',
+            detail: `Environmental objectives are quantified with ${projectEvaluation.evidence_found.length} metrics: ${projectEvaluation.evidence_found.join(', ')}.`
+        });
+    } else {
+        const missingEvidence = projectEvaluation.evidence_missing?.slice(0, 3) || ['specific metrics'];
+        gaps.push({
+            pillar: 'Project Evaluation',
+            status: projectEvaluation.score >= 50 ? 'PARTIAL' : 'FAIL',
+            score: projectEvaluation.score,
+            issue: 'Environmental objectives are not adequately quantified.',
+            detail: `Only ${projectEvaluation.evidence_found?.length || 0} metrics found. Missing: ${missingEvidence.join(', ')}.`,
+            fix: `Add specific quantified metrics such as: ${missingEvidence.map(m => {
+                const examples = {
+                    'Energy capacity/output': 'e.g., "50 MW capacity" or "120,000 MWh/year"',
+                    'GHG reduction': 'e.g., "43,800 tonnes CO2 avoided annually"',
+                    'Efficiency gains': 'e.g., "30% energy reduction"',
+                    'Project timeline': 'e.g., "24-month implementation"',
+                    'Certification reference': 'e.g., "targeting LEED Platinum"'
+                };
+                return examples[m] || m;
+            }).join('; ')}.`
+        });
+    }
+
+    // Pillar 3: Management of Proceeds
+    if (managementOfProceeds.score >= 70) {
+        strengths.push({
+            pillar: 'Management of Proceeds',
+            status: 'PASS',
+            detail: managementOfProceeds.reasoning
+        });
+    } else {
+        gaps.push({
+            pillar: 'Management of Proceeds',
+            status: 'PARTIAL',
+            score: managementOfProceeds.score,
+            issue: 'Proceeds tracking and management approach unclear.',
+            detail: 'No indication of how green loan proceeds will be ring-fenced or tracked.',
+            fix: 'Add commitment to segregated account or dedicated tracking for green proceeds. State that funds will be ring-fenced for the specified green purpose.'
+        });
+    }
+
+    // Pillar 4: Reporting
+    if (reporting.score >= 70) {
+        strengths.push({
+            pillar: 'Reporting',
+            status: 'PASS',
+            detail: `${reporting.reportable_metrics?.length || 0} impact metrics identified for reporting: ${(reporting.reportable_metrics || []).join(', ')}.`
+        });
+    } else {
+        gaps.push({
+            pillar: 'Reporting',
+            status: reporting.score >= 50 ? 'PARTIAL' : 'FAIL',
+            score: reporting.score,
+            issue: 'Insufficient impact reporting capability.',
+            detail: `Only ${reporting.reportable_metrics?.length || 0} reportable metrics identified.`,
+            fix: 'Include commitment to annual impact reporting with specific KPIs (e.g., MWh generated, tonnes CO2 avoided, jobs created). Consider third-party verification.'
+        });
+    }
+
+    // Greenwashing concerns
+    if (greenwashingRisk.risk_level === 'HIGH') {
+        gaps.push({
+            pillar: 'Credibility',
+            status: 'FAIL',
+            score: 100 - greenwashingRisk.risk_score,
+            issue: 'High greenwashing risk detected.',
+            detail: greenwashingRisk.flags.map(f => f.flag).join('; '),
+            fix: 'Remove vague environmental claims. Replace with specific, verifiable metrics. Consider third-party certification or verification.'
+        });
+    } else if (greenwashingRisk.risk_level === 'MEDIUM') {
+        gaps.push({
+            pillar: 'Credibility',
+            status: 'PARTIAL',
+            score: 100 - greenwashingRisk.risk_score,
+            issue: 'Moderate greenwashing risk.',
+            detail: greenwashingRisk.flags.map(f => f.flag).join('; '),
+            fix: 'Support environmental claims with specific evidence and consider external verification.'
+        });
+    }
+
+    return {
+        compliant: isCompliant,
+        gap_count: gaps.length,
+        strength_count: strengths.length,
+        gaps: gaps,
+        strengths: strengths,
+        summary: isCompliant
+            ? `Project meets LMA GLP requirements with ${strengths.length} pillars satisfied.`
+            : `Project has ${gaps.length} gap(s) preventing LMA GLP compliance: ${gaps.map(g => g.pillar).join(', ')}.`,
+        primary_blocker: gaps.length > 0 ? gaps[0] : null
     };
 }
 

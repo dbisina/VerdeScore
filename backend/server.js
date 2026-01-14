@@ -76,6 +76,160 @@ app.get('/api/loans', (req, res) => {
     });
 });
 
+// Deep Analysis Endpoint - On-demand detailed AI reasoning
+app.post('/api/loans/:id/deep-analysis', async (req, res) => {
+    const loanId = req.params.id;
+
+    try {
+        // 1. Get the loan from DB
+        const loan = await new Promise((resolve, reject) => {
+            db.get("SELECT * FROM loans WHERE id = ?", [loanId], (err, row) => {
+                if (err) reject(err);
+                else resolve(row);
+            });
+        });
+
+        if (!loan) {
+            return res.status(404).json({ error: 'Loan not found' });
+        }
+
+        // 2. Re-run AI evaluation for fresh, detailed analysis
+        const startTime = Date.now();
+        const aiResult = await aiModule.evaluateLoan({
+            applicant_name: loan.applicant_name,
+            amount: loan.amount,
+            purpose: loan.purpose
+        });
+        const processingTime = Date.now() - startTime;
+
+        // 3. Build comprehensive deep analysis response
+        const lmaGaps = aiResult.lma_compliance?.gap_analysis?.gaps || [];
+        const lmaStrengths = aiResult.lma_compliance?.gap_analysis?.strengths || [];
+        const euGaps = aiResult.eu_taxonomy?.gap_analysis?.gaps || [];
+        const euStrengths = aiResult.eu_taxonomy?.gap_analysis?.strengths || [];
+
+        // Build conversational analysis
+        let analysis = [];
+
+        // Executive Summary
+        analysis.push({
+            section: 'Executive Summary',
+            content: aiResult.reasoning || aiResult.explainability?.natural_language || 'Analysis complete.',
+            type: 'summary'
+        });
+
+        // LMA GLP Compliance
+        if (aiResult.lma_compliance) {
+            const lmaStatus = aiResult.lma_compliance.glp_compliant ? '✅ COMPLIANT' : '❌ NOT COMPLIANT';
+            analysis.push({
+                section: 'LMA Green Loan Principles',
+                status: lmaStatus,
+                score: aiResult.lma_compliance.overall_glp_score,
+                content: aiResult.lma_compliance.gap_analysis?.summary || `Score: ${aiResult.lma_compliance.overall_glp_score}/100`,
+                gaps: lmaGaps.map(g => ({
+                    pillar: g.pillar,
+                    issue: g.issue,
+                    detail: g.detail,
+                    fix: g.fix,
+                    status: g.status
+                })),
+                strengths: lmaStrengths.map(s => ({
+                    pillar: s.pillar,
+                    detail: s.detail
+                })),
+                type: 'compliance'
+            });
+        }
+
+        // EU Taxonomy
+        if (aiResult.eu_taxonomy) {
+            const euStatus = aiResult.eu_taxonomy.eu_taxonomy_eligible ? '✅ ALIGNED' : '❌ NOT ALIGNED';
+            analysis.push({
+                section: 'EU Taxonomy Regulation',
+                status: euStatus,
+                score: aiResult.eu_taxonomy.alignment_score,
+                primary_objective: aiResult.eu_taxonomy.substantial_contribution?.primary_objective,
+                content: aiResult.eu_taxonomy.gap_analysis?.summary || aiResult.eu_taxonomy.summary,
+                gaps: euGaps.map(g => ({
+                    criterion: g.criterion,
+                    issue: g.issue,
+                    detail: g.detail,
+                    fix: g.fix,
+                    status: g.status
+                })),
+                strengths: euStrengths.map(s => ({
+                    criterion: s.criterion,
+                    detail: s.detail
+                })),
+                alignment_pathway: aiResult.eu_taxonomy.gap_analysis?.alignment_pathway,
+                type: 'compliance'
+            });
+        }
+
+        // Greenwashing Assessment
+        if (aiResult.greenwashing_risk) {
+            const riskEmoji = aiResult.greenwashing_risk.risk_level === 'HIGH' ? '🚨' :
+                aiResult.greenwashing_risk.risk_level === 'MEDIUM' ? '⚠️' : '✅';
+            analysis.push({
+                section: 'Greenwashing Risk Assessment',
+                status: `${riskEmoji} ${aiResult.greenwashing_risk.risk_level} RISK`,
+                score: 100 - aiResult.greenwashing_risk.risk_score,
+                content: aiResult.greenwashing_risk.recommendation,
+                flags: aiResult.greenwashing_risk.flags?.map(f => f.flag || f) || [],
+                type: 'risk'
+            });
+        }
+
+        // Improvement Actions
+        const suggestions = aiResult.explainability?.improvement_suggestions || [];
+        if (suggestions.length > 0) {
+            analysis.push({
+                section: 'Recommended Actions',
+                content: 'Actions to improve green credentials:',
+                actions: suggestions.slice(0, 5).map(s => ({
+                    priority: s.priority,
+                    category: s.category,
+                    action: s.suggestion,
+                    potential_gain: s.potential_gain
+                })),
+                type: 'actions'
+            });
+        }
+
+        // Semantic Insights
+        if (aiResult.semantic) {
+            analysis.push({
+                section: 'AI Understanding',
+                content: `Primary category match: ${aiResult.semantic.primary_category?.category?.replace(/_/g, ' ') || 'None'} (${Math.round((aiResult.semantic.primary_category?.similarity || 0) * 100)}% confidence)`,
+                semantic_score: aiResult.semantic.semantic_score,
+                metrics_found: aiResult.semantic.quantified_metrics,
+                type: 'insight'
+            });
+        }
+
+        res.json({
+            status: 'success',
+            loan_id: loanId,
+            applicant: loan.applicant_name,
+            overall_score: aiResult.green_score,
+            recommendation: aiResult.recommendation,
+            processing_time_ms: processingTime,
+            analysis: analysis,
+            raw_scores: {
+                green_score: aiResult.green_score,
+                risk_score: aiResult.risk_score,
+                lma_score: aiResult.lma_compliance?.overall_glp_score,
+                eu_score: aiResult.eu_taxonomy?.alignment_score,
+                semantic_score: aiResult.semantic?.semantic_score
+            }
+        });
+
+    } catch (error) {
+        console.error('Deep analysis error:', error);
+        res.status(500).json({ error: 'Failed to perform deep analysis', details: error.message });
+    }
+});
+
 // Get Aggregated Dashboard Stats
 app.get('/api/dashboard/stats', (req, res) => {
     const sql = `
