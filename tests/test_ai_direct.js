@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { evaluateLoan } = require('./ai-module/index.js'); // Adjust path as needed
+const { evaluateLoan } = require('../ai-module/index.js'); // Adjust path as needed
 
 async function testDirect() {
     console.log("Testing AI Module Direct...");

@@ -1,3 +1,19 @@
+// Polyfills for pdf-parse (pdfjs-dist) compatibility on Node.js 18+
+// These are browser-only APIs that pdf-parse tries to use
+if (typeof globalThis.DOMMatrix === 'undefined') {
+    globalThis.DOMMatrix = class DOMMatrix {
+        constructor() { this.a = 1; this.b = 0; this.c = 0; this.d = 1; this.e = 0; this.f = 0; }
+    };
+}
+if (typeof globalThis.ImageData === 'undefined') {
+    globalThis.ImageData = class ImageData {
+        constructor(w, h) { this.width = w; this.height = h; this.data = new Uint8ClampedArray(w * h * 4); }
+    };
+}
+if (typeof globalThis.Path2D === 'undefined') {
+    globalThis.Path2D = class Path2D { constructor() { } };
+}
+
 require('dotenv').config({ path: '../.env' });
 const express = require('express');
 const cors = require('cors');
@@ -6,7 +22,14 @@ const db = require('./database');
 const { logAuditEntry, logBenchmark, getBenchmarkStats } = require('./database');
 const aiModule = require('../ai-module');
 const multer = require('multer');
-const documentProcessor = require('../ai-module/document-processor');
+
+// Document processor is optional - pdf-parse has compatibility issues on some Node versions
+let documentProcessor = null;
+try {
+    documentProcessor = require('../ai-module/document-processor');
+} catch (err) {
+    console.warn('Warning: Document processor not available -', err.message);
+}
 
 // Configure upload storage (memory for immediate processing)
 const upload = multer({ storage: multer.memoryStorage() });
@@ -252,6 +275,10 @@ app.post('/api/invest', (req, res) => {
 // Upload and analyze loan documents
 app.post('/api/loans/:id/documents', upload.single('document'), async (req, res) => {
     try {
+        if (!documentProcessor) {
+            return res.status(503).json({ error: "Document processing is not available on this server" });
+        }
+
         if (!req.file) {
             return res.status(400).json({ error: "No file uploaded" });
         }
