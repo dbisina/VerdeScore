@@ -1,6 +1,9 @@
 # VerdeScore: AI-Powered Green Loan Intelligence
 
+
 > **66,461x faster** than manual review. 13 milliseconds. Full audit trail.
+>
+> 🌐 **[View it live](https://verdescore-production.up.railway.app/dashboard)**
 
 VerdeScore transforms green loan evaluation from a 10-day manual process into instant AI-powered decisions using **semantic analysis**, not keyword matching.
 
